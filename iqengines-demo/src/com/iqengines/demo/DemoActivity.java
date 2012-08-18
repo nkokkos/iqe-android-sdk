@@ -48,10 +48,10 @@ public class DemoActivity extends Activity {
 
 	// Insert your API key here (find it at iengines.com --> developer center
 	// --> settings).
-	static final String KEY = "513368a8339f4a5983aa976c559011cc";
+	static final String KEY = "";
 	// Insert your secret key here (find it at iengines.com --> developer center
 	// --> settings).
-	static final String SECRET = "eb750687684247a5b5667cf83b86ba92";
+	static final String SECRET = "";
 
 	/**
 	 * Settings.
