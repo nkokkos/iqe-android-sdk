@@ -20,11 +20,12 @@ Vision IQ mobile : Visual search on the mobile device
 The VisionIQ cloud can scale to recognize millions of images. However, if your dataset is small (~100 objects), then the recognition can happen entirely on the mobile device. There is need for an internet connection as the image isn't sent to the VisionIQ cloud. This makes for a really snappy experience, and quasi-instant results. If you turn on the *continuous* mode, then frames are continuously grabbed from the camera and matched against the *local* image dataset, which means that objects can be recognized without the user having to take an action such as pressing a shutter button 
 
 Contents 
----------------------------
+--------
 
 * **iqengines-sdk**: the VisionIQ SDK. It contains all the necessary functions to include VisionIQ functionality in your app.
+* **iqengines-barcode**: our user-friendly integration of the [ZXing](http://code.google.com/p/zxing/) library.
 * **iqengines-demo**: the VisionIQ demo application. It provides a good example of how the SDK can be included in a mobile app, along with best practices and a UI that follows Android guidelines.
-* **prebuilt**: a set of prebuilt libraries for [OpenCV](http://opencv.willowgarage.com/) that are used for the *local* search. 
+* **prebuilt**: a set of prebuilt libraries for [OpenCV](http://opencv.willowgarage.com/) that are used for the *local* search.
 
 Throughout this tutorial we use the Eclipse IDE. If you aren't developing on eclipse, please adapt the following instruction to your own IDE.
 
@@ -43,13 +44,13 @@ Installation
 
 * Import an **existing project into Workspace** into your workspace and select the **iqe-android-sdk** folder.
 
-![center](http://img.skitch.com/20120511-jraspaepie4brmidwak6tt7g8d.medium.jpg)
+![center](http://img.skitch.com/20120816-gyshwsxb6krsumecwdniwssnd9.png)
 
 * For each project, in the package explorer right-click your android project and select **Properties**.
 * In the **Properties** window, select the **Android** properties group at left and locate the **Project Build Target** window on the right.
 * Pick a version above API level 11. Note that the SDK works for any API level 8 and above, but in order to follow Android's design guidelines, the demo app only works for any API level 11 and above.
 
-![center](http://img.skitch.com/20120511-d62rsbax337bekajgtpenmiefn.png)
+![center](http://img.skitch.com/20120817-bwn3b8p8bw6tybky8cwpejuw7.png)
 
 * When the dialog closes, click Apply in the **Properties** window.
 * Click OK to close the **Properties** window.
@@ -64,19 +65,17 @@ When you import the VisionIQ SDK into an app, you can configure it by setting th
 
 ![center](http://img.skitch.com/20120515-c7418drprn2papjpm3w9t4iq5s.png)
 
-* *remote* search
+* **search engines** :
     * **`SEARCH_OBJECT_REMOTE`**: if set to **true**, *remote* search is enabled.
-* *local* search
     * **`SEARCH_OBJECT_LOCAL`**: if set to **true**, *local* search is enabled.
-    * **`SEARCH_OBJECT_LOCAL_CONTINUOUS`**: if set to **true**, *local continuous* search is enabled. You
+    * **`SEARCH_OBJECT_BARCODE`**: if set to **true**, *barcode* search is enabled.
+* **search modes** :
+	* **`SEARCH_OBJECT_SCAN`**: if set to **true**, your app will be able to scan. Frames will be automatically grabbed and processed by either *local* or *barcode* search, according to your settings.
+	* **`SEARCH_OBJECT_SNAP`**: if set to **true**, your app will be able to snap. When you push the button, the phone takes a picture and processes it. If the *remote* search is enable, it sends it to our server.
+	
+> With those options you can build an app using exclusively either *remote* search, *local* search or *barcode* search. Your app can also use any combination of the three.
 
-> With those options you can build an app using exclusively either *remote* search, *local* search or *local continuous* search. Your app can also use any combination of the three.
-
-![center](http://img.skitch.com/20120525-m89y8frpkixqj6173aqafbwebn.png)
-
-   * **`MAX_TEST_LOCAL_SEARCH_TIME`**: the maximum duration of a *local* search. If *local* search is enabled, the VisionIQ SDK runs a test search to assess the processing speed of the mobile device. To provide a consistent experience across the Android ecosystem, *local* search is disabled for older mobile devices that do not pass the test. In the DemoApp, the test is run in the **onCreate** function in [DemoActivity.java](https://github.com/iqengines/android-sdk/blob/master/iqengines-demo/src/com/iqengines/demo/DemoActivity.java).
-
-![center](http://img.skitch.com/20120511-ts2y73fkbinnnprf92kdan454p.png)
+![center](http://img.skitch.com/20120816-p83pdwnagtgy2x8mkxyk6trqpy.png)
 
 You are now ready to try the demo-app. launch the application on your own Android device and try VisionIQ.
 
@@ -114,18 +113,27 @@ Your images are grouped into objects. There are three steps to build a new objec
 
 The local dataset is hosted directly on the mobile device, and the recognition algorithms are also performed entirely locally. It is not possible at the moment for you to directly generate the image signatures that are necessary for recognition (this "local training" feature is coming soon!). To receive the iqedata folder that corresponds to your own set of images, first train VisionIQ server, and then contact us at <support@iqengines.com>. Once you have received the iqedata folder back, put it in the "assets" folder as shown in the example below.
 
-![center](http://img.skitch.com/20120515-c27n4hfgksdwrehwdrf1ufit97.png)
+![center](http://img.skitch.com/20120816-bp7shu4915iaghutu167yqg4rr.png)
 
 ### IQ Engines dataset and crowdsourcing
 
 VisionIQ Also allows you to search in the IQ Engines' data base and to use the crowdsourcing module in case VisionIQ is not able to match your image. Images tagged by humans can also "train" the IQ Engines' dataset : the picture and the tag are both stored in the server.
 
+Configure the barcode engine
+----------------------------
+
+Our *barcode* engine is an user-friendly integration of the laser-fast open library [ZXing](http://code.google.com/p/zxing/). It provides a large range of barcode formats, and is very flexible. 
+
+The *iqengines-sdk-barcode* project contains the source code. All the settings are in the *iqengines-sdk* project, in the *com.iqengines.sdk.barcode* package. In there, you can change the barcode formats you want to recognize or the way your app handle the results
+
+![center](http://img.skitch.com/20120816-gjyfncbsn8sngxh44fk84atawk.png)
+
 Configure VisionIQ server
 -------------------------
 
-Crowdsourcing and *local* search are not required for every app. VisionIQ allows you to choose either *remote*, *local* or *local continuous* search as well as any combination of the three. You may also choose in which dataset you want to perform the search. This flexibility is available through the [settings](http://www.iqengines.com/dashboard/settings/) on the developer dashboard.
+Crowdsourcing and *local* search are not required for every app. VisionIQ allows you to choose either *remote*, *local* or *barcode* search as well as any combination of the three. You may also choose in which dataset you want to perform the search. This flexibility is available through the [settings](http://www.iqengines.com/dashboard/settings/) on the developer dashboard.
 
-![center](http://img.skitch.com/20120515-c5cyp7thaabm7mkp5u57ud6t48.png)
+![center](http://img.skitch.com/20120815-k7ei9jp88km7a6fmrennmaniec.png)
 
 For example, an app performing only remote search in the private dataset would have :
 
@@ -138,16 +146,16 @@ For example, an app performing only remote search in the private dataset would h
 ![center](http://img.skitch.com/20120515-dunphgqy2mfrcqqud7kxs4ibis.png)
 
 
-Tips for local search
----------------------
+Tips for successful and fast search
+-----------------------------------
 
-*Local* search and *local continuous* search are powerful tools that make image recognition performs very fast in your app. Time for processing an image locally is < 300 milliseconds for recent Android devices. It is important that you manage camera and picture formats carefully. Here are some tips to build the best app possible.
+*Local* search and *barcode* search combined with *scan* mode are powerful tools that make image recognition performs very fast in your app. Time for processing an image locally is < 100 milliseconds for recent Android devices. It is important that you manage camera and picture formats carefully. Here are some tips to build the best app possible.
 
 
-* Both *local* and remote *search* deal with every [image format](http://developer.android.com/reference/android/graphics/ImageFormat.html).
-* The SDK crops the center of the picture and processes it, so you should add a target zone to your preview.
+* *Remote* deal with every [image format](http://developer.android.com/reference/android/graphics/ImageFormat.html).
+* *Barcode* search crops a square at the center of the screen. It's length is 80% of the phone width. It can be a good idea to insert a target zone.
 * There is always a balance between accuracy and speed. Trials are the best way to find the best settings.
-	* Compression and conversion are time-consuming operations, avoid them whenever it's possible.
+	* Compression and format conversion are time-consuming operations, avoid them whenever it's possible.
 	* Data compression increases transfer speed and therefore the *remote* search speed.
 	* Remember that compression involves (in some cases) data loss and lower picture quality.
 	* See the [YuvImage](http://developer.android.com/reference/android/graphics/YuvImage.html) and try to manage [YUV format](http://developer.android.com/reference/android/graphics/ImageFormat.html) which is the standard output format of Android cameras.
@@ -159,8 +167,8 @@ Include the VisionIQ SDK in your own project
 To start using IQEngines SDK in your Android project, follow these steps:
 
 * If the **NDK** isn't set up, install the Android [NDK](http://developer.android.com/sdk/ndk/index.html) Set the android **`ANDROID_SDK_ROOT`** as explained earlier.
-* Import both the **OpenCV** project inside prebuilt and the **iqengines-sdk** project into your workspace.
-* Pick a version above API Level 11 in the **Properties** as explained earlier.
+* Import both **iqengines-sdk** and **iqengines-sdk-barcode** projects into your workspace.
+* Pick a version above API Level 8 in the **Properties** as explained earlier.
 * In the Package Explorer, right-click your **Android project** and select **Properties**.
 * In the **Properties** window, select the **Android** properties group at left and locate the **Library** window on the right.
 * Click Add to open the Project Selection dialog.

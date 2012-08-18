@@ -33,9 +33,16 @@ import org.apache.http.entity.mime.content.StringBody;
 import org.apache.http.impl.client.DefaultHttpClient;
 import org.apache.http.util.EntityUtils;
 
+import android.util.Log;
+	
+
 public class IQRemote implements Serializable {
     
+	private String timeStamp;
+	
     public final static int MAX_IMAGE_SIZE = 480;
+
+    private static final String TAG = IQRemote.class.getName();
     
     /*
      * CONSTRUCTORS
@@ -70,8 +77,48 @@ public class IQRemote implements Serializable {
      * @return A non-<code>null</code> {@link IQEQuery}
      * @throws IOException 
      */
-    public IQEQuery query(File image, String deviceId) throws IOException {
-        return query(image, null, null, deviceId, true, null, null, null);
+    public IQEQuery query(File image, String deviceId, String qid) throws IOException {
+
+        
+        return query(image, null, null, deviceId, true, null, null, null,qid);
+    }
+    
+    public String DefineQueryId(File image, String webhook, String extra,
+            String device_id, boolean json,
+            String gps_altitude, String gps_longitude,
+            String gps_latitude) throws IOException {
+        TreeMap<String, String> fields = new TreeMap<String, String>();
+
+        // Optional parameters
+        if (webhook != null) {
+            fields.put("webhook", webhook);
+        }
+        if (extra != null) {
+            fields.put("extra", extra);
+        }
+        if (device_id != null) {
+            fields.put("device_id", device_id);
+        }
+        if (json) {
+            fields.put("json", "1");
+        }
+        if (gps_altitude != null) {
+            fields.put("gps_altitude", gps_altitude);
+        }
+        if (gps_longitude != null) {
+            fields.put("gps_longitude", gps_longitude);
+        }
+        if (gps_latitude != null) {
+            fields.put("gps_latitude", gps_latitude);
+        }
+
+        // Required parameters
+        fields.put("img", image.getPath());
+        timeStamp=now();
+        fields.put("time_stamp", timeStamp);
+        fields.put("api_key", key);
+        
+        return buildSignature(fields);
     }
 
     /**
@@ -111,7 +158,7 @@ public class IQRemote implements Serializable {
     public IQEQuery query(File image, String webhook, String extra,
             String device_id, boolean json,
             String gps_altitude, String gps_longitude,
-            String gps_latitude) throws IOException {
+            String gps_latitude, String queryId) throws IOException {
         TreeMap<String, String> fields = new TreeMap<String, String>();
 
         // Optional parameters
@@ -139,9 +186,9 @@ public class IQRemote implements Serializable {
 
         // Required parameters
         fields.put("img", image.getPath());
-        fields.put("time_stamp", now());
+        fields.put("time_stamp", timeStamp);
         fields.put("api_key", key);
-        fields.put("api_sig", buildSignature(fields));
+        fields.put("api_sig", queryId);
 
         if (image.exists()) {
             return new IQEQuery(post(IQESelector.query, fields), fields.get("api_sig"));
@@ -197,7 +244,6 @@ public class IQRemote implements Serializable {
         if (json) {
             fields.put("json", "1");
         }
-
         // Required parameters
         fields.put("time_stamp", now());
         fields.put("api_key", key);
@@ -418,7 +464,7 @@ public class IQRemote implements Serializable {
      * Post fields and files to an http host as multipart/form-data.
      *
      * @param selector
-     *            A non-<code>null</code> {@link IQESelector} : The type of post
+     *            A non-<code>null</code> {@link IQESelector} : The type of 	
      *            message.
      * @param fields
      *            A non-<code>null</code> {@link TreeMap} : The fields
@@ -428,6 +474,7 @@ public class IQRemote implements Serializable {
     
     
     private String post(IQESelector selector, TreeMap<String, String> fields) throws IOException {
+    	
         String result = "error";
         String url = "http://api.iqengines.com/v1.2/" + selector + "/";
 
@@ -448,16 +495,19 @@ public class IQRemote implements Serializable {
                 entity.addPart(tmpKey, new StringBody(fields.get(tmpKey)));
             }
         }
+        
         httppost.setEntity(entity);
-
         HttpResponse response = client.execute(httppost);
         HttpEntity resEntity = response.getEntity();
-
+        
         if (resEntity != null) {
+        	Log.d(TAG,"resEntity is not null");
             long length = resEntity.getContentLength();
             // Check if we have to stream the result of the query
             if (length != -1 && length < 2048) {
                 result = EntityUtils.toString(resEntity);
+                Log.d(TAG, "result :"+result);
+                
             } else {
                 InputStream instream = resEntity.getContent();
 
@@ -469,18 +519,16 @@ public class IQRemote implements Serializable {
 
                     int n;
                     while ((n = reader.read(buffer)) != -1) {
+                    	Log.d(TAG,""+reader.read(buffer));
                         writer.write(buffer, 0, n);
                     }
                 } finally {
                     instream.close();
                 }
-                
                 result = writer.toString();
             }
-            
             resEntity.consumeContent();
         }
-        
         return result;
     }
 

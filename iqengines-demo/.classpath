@@ -10,5 +10,7 @@
 	<classpathentry kind="lib" path="/iqengines-sdk/jars/httpcore-4.0.1.jar"/>
 	<classpathentry kind="lib" path="/iqengines-sdk/jars/httpmime-4.0.1.jar"/>
 	<classpathentry kind="con" path="com.android.ide.eclipse.adt.LIBRARIES"/>
+	<classpathentry kind="lib" path="/iqengines-sdk/jars/commons-validator-1.4.0.jar"/>
+	<classpathentry kind="lib" path="/iqengines-sdk/libs/json-simple-1.1.1.jar"/>
 	<classpathentry kind="output" path="bin/classes"/>
 </classpath>

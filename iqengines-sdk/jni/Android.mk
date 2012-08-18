@@ -1,6 +1,6 @@
 LOCAL_PATH := $(call my-dir)
 
-OPENCV_PACKAGE_DIR := $(LOCAL_PATH)/../../prebuilt/OpenCV-2.3.1
+OPENCV_PACKAGE_DIR := $(LOCAL_PATH)/../../prebuilt/OpenCV
 
 include $(CLEAR_VARS)
 LOCAL_MODULE := iqindex
@@ -20,6 +20,6 @@ LOCAL_SRC_FILES := \
 
 LOCAL_SHARED_LIBRARIES := iqindex
 
-LOCAL_LDLIBS := -llog
+LOCAL_LDLIBS := -llog -lz
 
 include $(BUILD_SHARED_LIBRARY)

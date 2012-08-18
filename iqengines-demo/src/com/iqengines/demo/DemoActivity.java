@@ -2,10 +2,13 @@ package com.iqengines.demo;
 
 import java.io.File;
 import java.io.IOException;
+import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
+
+import org.apache.commons.validator.routines.UrlValidator;
 
 import android.app.Activity;
 import android.app.AlertDialog;
@@ -13,16 +16,16 @@ import android.app.ProgressDialog;
 import android.content.ActivityNotFoundException;
 import android.content.DialogInterface;
 import android.content.Intent;
-import android.content.SharedPreferences;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.graphics.ImageFormat;
 import android.graphics.YuvImage;
+import android.hardware.Camera;
 import android.hardware.Camera.Size;
 import android.net.Uri;
-import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
+import android.os.Message;
 import android.util.Log;
 import android.view.View;
 import android.view.View.OnClickListener;
@@ -39,709 +42,784 @@ import com.iqengines.sdk.Utils;
 public class DemoActivity extends Activity {
 
 	/**
-	 * Account settings. You can obtain the required keys after you've signed up for visionIQ.
+	 * Account settings. You can obtain the required keys after you've signed up
+	 * for visionIQ.
 	 */
 
-	// Insert your API key here (find it at iengines.com --> developer center --> settings).
-    static final String KEY = "";
-    // Insert your secret key here (find it at iengines.com --> developer center --> settings).
-    static final String SECRET = "";
+	// Insert your API key here (find it at iengines.com --> developer center
+	// --> settings).
+	static final String KEY = "513368a8339f4a5983aa976c559011cc";
+	// Insert your secret key here (find it at iengines.com --> developer center
+	// --> settings).
+	static final String SECRET = "eb750687684247a5b5667cf83b86ba92";
 
-    /**
-     * LOCAL search Settings.
-     */
-    
-    // Activates the local search if the hardware supports it.
-    static final boolean SEARCH_OBJECT_LOCAL = true && isHardwareLocalSearchCapable();    
-    // Activates the continuous local search if the hardware supports it.
-    static boolean SEARCH_OBJECT_LOCAL_CONTINUOUS = true && isHardwareLocalSearchCapable();
-   
-    /**
-     * REMOTE search Settings.
-     */
-    
-    // Maximum duration of a remote search.
-    static final long REMOTE_MATCH_MAX_DURATION = 10000;
-    // Activates the remote search.
-    static final boolean SEARCH_OBJECT_REMOTE = true;
+	/**
+	 * Settings.
+	 */
+	
+	// Activates the local search.
+	static final boolean SEARCH_OBJECT_LOCAL = true;
+	
+	// Activates the barcode scanning
+	static boolean SEARCH_OBJECT_BARCODE = true;
+	
+	// Activates the scan search.
+	static boolean SEARCH_OBJECT_SCAN = true;
+	
+	// Activates the snap search
+	static boolean SEARCH_OBJECT_SNAP = true;
+	
+	// Activates the remote search.
+	static final boolean SEARCH_OBJECT_REMOTE = true;
+
+	// Maximum duration of a remote search.
+	static final long REMOTE_MATCH_MAX_DURATION = 10000;
+	
 
 
-    
-    private String localSearchCapableStr = null;    
-    
-    static final boolean PROCESS_ASYNC = true;
+	
+	static final int MAX_ITEM_HISTORY = 20;
 
-    private static final String FIRST_START_SHARED_PREF = "FIRST_START_SHARED_PREF";
+	static final boolean PROCESS_ASYNC = true;
 
-    static final boolean DEBUG = true;
-    
-    private static final String TAG = DemoActivity.class.getSimpleName();
-    
-    private Handler handler;
+	static final boolean DEBUG = true;
 
-    private Preview preview;
+	private static final String TAG = DemoActivity.class.getSimpleName();
 
-    private ImageButton remoteMatchButton;
+	private Handler handler;
 
-    private ImageButton btnShowList;
-    
-    private ImageButton infoButton;
+	private Preview preview;
 
-  //  private ImageView frozenPreview;
+	private ImageButton snapButton;
 
-  // private ImageView targetArea;
+	private ImageButton btnShowList;
 
-    List<HistoryItem> history;
+	private ImageButton tutoButton;
 
-    private HistoryItemDao historyItemDao;
+	List<HistoryItem> history;
 
-    static HistoryListAdapter historyListAdapter;
+	private HistoryItemDao historyItemDao;
 
-    static IQE iqe;
+	static HistoryListAdapter historyListAdapter;
 
-    private AtomicBoolean capturing = new AtomicBoolean(false);
+	static IQE iqe;
 
-    private AtomicBoolean localMatchInProgress = new AtomicBoolean(false);
+	private AlertDialog ad;
+	
+	private QueryProgressDialog pd;
 
-    private AtomicBoolean remoteMatchInProgress = new AtomicBoolean(false);
+	private AtomicBoolean activityRunning = new AtomicBoolean(false);
+	
+	private Preview.FrameReceiver mreceiver;
+	
+	/**
+	 * Checks whether local search is possible on this hardware.
+	 * 
+	 * @return A {@link Boolean} true if local search is possible.
+	 */
 
-    private AtomicBoolean activityRunning = new AtomicBoolean(false);
+	@Override
+	public void onCreate(Bundle savedInstanceState) {
+		super.onCreate(savedInstanceState);
+		if (DEBUG) Log.d(TAG, "onCreate");
+		
+		requestWindowFeature(Window.FEATURE_NO_TITLE);
+		setContentView(R.layout.main);
+		handler = new Handler();
+		initHistory();
+		initHistoryListView();
+		initUI();
+		initIqSdk();
+		mreceiver = new DemoFrameReceiver();
+		preview.mPreviewThread = preview.new PreviewThread("Preview Thread");
+		preview.mPreviewThread.start();
+	}
 
-    
-    /**
-     * Checks whether local search is possible on this hardware.
-     * 
-     * @return A {@link Boolean} true if local search is possible.
-     */
-    
-    
-    private static boolean isHardwareLocalSearchCapable() {
-        boolean res = Build.VERSION.SDK_INT > Build.VERSION_CODES.ECLAIR_MR1
-                && android.os.Build.CPU_ABI.equals("armeabi-v7a");
-        Log.d(TAG, "chipset instruction set: " + android.os.Build.CPU_ABI + ", android version:"
-                + Build.VERSION.SDK_INT + " => isHardwareLocalSearchCapable=" + res);
-        return res;
-    }
-    
-    @Override
-    public void onCreate(Bundle savedInstanceState) {
-        super.onCreate(savedInstanceState);
+	private void initHistory() {
+		historyItemDao = new HistoryItemDao(this);
+		history = historyItemDao.loadAll();
+		if (history == null) {
+			history = new ArrayList<HistoryItem>();
+		}
+	}
 
-        requestWindowFeature(Window.FEATURE_NO_TITLE);
-        setContentView(R.layout.main);
-        handler = new Handler();
+	private void initHistoryListView() {
+		historyListAdapter = new HistoryListAdapter(this);
+		btnShowList = (ImageButton) findViewById(R.id.historyButton);
+		btnShowList.setOnClickListener(new OnClickListener() {
+			@Override
+			public void onClick(View v) {
+				preview.mPreviewThreadRun.set(false);
+				Intent intent = new Intent(DemoActivity.this,HistoryActivity.class);
+				startActivity(intent);
+			}
+		});
+	}
 
-        initHistory();
-        initHistoryListView();
-        initIqSdk();
-        initUI();
+	private void initIqSdk() {
+		iqe = new IQE(this, SEARCH_OBJECT_REMOTE,SEARCH_OBJECT_LOCAL,
+				SEARCH_OBJECT_BARCODE, onResultCallback, KEY, SECRET);
+	}
 
-        localSearchCapableStr = savedInstanceState != null ? savedInstanceState
-                .getString("localSearchCapable") : null;
-        if (SEARCH_OBJECT_LOCAL_CONTINUOUS && localSearchCapableStr == null) {
-            testContinousLocalSearchCapability();
-        } else {
-            if (SEARCH_OBJECT_LOCAL_CONTINUOUS) {
-                boolean localSearchCapable = Boolean.parseBoolean(localSearchCapableStr);
-                if (!localSearchCapable) {
-                    Toast.makeText(
-                            DemoActivity.this,
-                            "This device is not capable to perform local continous search so this feature is disabled",
-                            Toast.LENGTH_LONG);
-                }
-                SEARCH_OBJECT_LOCAL_CONTINUOUS &= localSearchCapable;
-            }
-        }
-        
-        launchTutorialIfNeeded();
-    }
+	@Override
+	public void onDestroy() {
+		if (DEBUG) Log.d(TAG,"onDestroy");
+		iqe.destroy();
+		super.onDestroy();
+	}
 
-    
-    private void launchTutorialIfNeeded() {
-        SharedPreferences preferences = getPreferences(MODE_PRIVATE); 
-        boolean isFirstStart = preferences.getBoolean(FIRST_START_SHARED_PREF, true);
-        if (isFirstStart) {
-            SharedPreferences.Editor editor = preferences.edit();
-            editor.putBoolean(FIRST_START_SHARED_PREF, false);
-            editor.commit();
-            
-            Intent intent = new Intent(DemoActivity.this, TutorialActivity.class);
-            startActivity(intent);
-        } 
-    }
-
-    
-    private void testContinousLocalSearchCapability() {
-        SEARCH_OBJECT_LOCAL_CONTINUOUS = false;
-        
-        final ProgressDialog pd = showCenteredProgressDialog("Device local search capability is being determined");
-
-        final Runnable testTimeExpireRunnable = new Runnable() {
-            @Override
-            public void run() {
-                pd.dismiss();
-                Toast.makeText(
-                        DemoActivity.this,
-                        "This device is not capable to perform local continous search so this feature is disabled",
-                        Toast.LENGTH_LONG).show();
-            }
-        };
-
-        new Thread() {
-            public void run() {
-                long timeSpentOnLocalSearch = iqe.testLocalSearchCapability();
-                pd.dismiss();
-                SEARCH_OBJECT_LOCAL_CONTINUOUS = timeSpentOnLocalSearch <= IQE.MAX_TEST_LOCAL_SEARCH_TIME;
-                Log.d(TAG, "timeSpentOnLocalSearch=" + timeSpentOnLocalSearch
-                        + " => SEARCH_OBJECT_LOCAL_CONTINUOUS=" + SEARCH_OBJECT_LOCAL_CONTINUOUS);
-                if (SEARCH_OBJECT_LOCAL_CONTINUOUS) {
-                    handler.removeCallbacks(testTimeExpireRunnable);
-                    localSearchCapableStr = "true";
-                }
-            }
-        }.start();
-
-        handler.postDelayed(testTimeExpireRunnable, IQE.MAX_TEST_LOCAL_SEARCH_TIME);
-    }
-
-    
-    private void initHistory() {
-        historyItemDao = new HistoryItemDao(this);
-
-        history = historyItemDao.loadAll();
-        if (history == null) {
-            history = new ArrayList<HistoryItem>();
-        }
-    }
-
-    
-    private void initHistoryListView() {
-        historyListAdapter = new HistoryListAdapter(this);
-
-        btnShowList = (ImageButton) findViewById(R.id.historyButton);
-        btnShowList.setOnClickListener(new OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                Intent intent = new Intent(DemoActivity.this, HistoryActivity.class);
-                startActivity(intent);
-            }
-        });
-    }
-
-    
-    private void initIqSdk() {
-        iqe = new IQE(this, SEARCH_OBJECT_REMOTE, SEARCH_OBJECT_LOCAL_CONTINUOUS
-                || SEARCH_OBJECT_LOCAL, KEY, SECRET);
-    }
-
-    @Override
-    public void onDestroy() {
-        iqe.destroy();
-        super.onDestroy();
-    }
-
-   
-	@SuppressWarnings("unused") 
+	// some code unused in specific configurations.
 	private void initUI() {
-        preview = (Preview) findViewById(R.id.preview);
+		preview = (Preview) findViewById(R.id.preview);
+		tutoButton = (ImageButton) findViewById(R.id.tutoButton);
+		tutoButton.setOnClickListener(new View.OnClickListener() {
 
-        infoButton = (ImageButton) findViewById(R.id.infoButton);
-        infoButton.setOnClickListener(new View.OnClickListener() {
-            
-            @Override
-            public void onClick(View v) {
-                Intent intent = new Intent(DemoActivity.this, TutorialActivity.class);
-                startActivity(intent);
-            }
-        });
-        
-        remoteMatchButton = (ImageButton) findViewById(R.id.capture);
-        remoteMatchButton.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                if (!remoteMatchInProgress.get()) {
-                    if (preview.mCamera == null) {
-                        return;
-                    }
-                    
-//                    final ProgressDialog fPd = showCenteredProgressDialog("Focusing...");
-//
-//                    preview.mCamera.autoFocus(new AutoFocusCallback() {
-//                        @Override
-//                        public void onAutoFocus(boolean success, Camera camera) {
-//                            fPd.dismiss();
-                            // freeze last frame available on preview
-                            YuvImage yuv = new YuvImage(preview.getLastFrameCopy(),ImageFormat.NV21,
-                                    preview.mPreviewSize.width,preview.mPreviewSize.height,null);
-                            freezePreview();
-                            remoteMatchInProgress.set(true);
-                            remoteMatchButton.setImageResource(R.drawable.btn_ic_camera_shutter);
-                            pd = showCenteredProgressDialog("Uploading...");
-                            processImageLocallyAndRemotely(yuv);
-//                        }
-//                    });
-                }
-            }
-        });
-        if (!SEARCH_OBJECT_REMOTE && !SEARCH_OBJECT_LOCAL) {
-            remoteMatchButton.setVisibility(View.GONE);
-        }
-    }
+			@Override
+			public void onClick(View v) {
+				preview.mPreviewThreadRun.set(false);
+				Intent intent = new Intent(DemoActivity.this,
+						TutorialActivity.class);
+				startActivity(intent);
+			}
+		});
+		
+		pd = new QueryProgressDialog(this);
+		
+		snapButton = (ImageButton) findViewById(R.id.capture);
+		snapButton.setOnClickListener(new View.OnClickListener() {
+			@Override
+			public void onClick(View v) {				
+				if (DEBUG) Log.d(TAG,"*********** snap button pushed ***********");
+				iqe.goScan();
+				stopScanning();
+				
+				snapButton
+				.setImageResource(R.drawable.btn_ic_camera_shutter);
+				
+				if (preview.mCamera == null) {
+					return;
+				}
 
-    
-    public void onSaveInstanceState(Bundle stateBundle) {
-        stateBundle.putString("localSearchCapable", localSearchCapableStr);
-        super.onSaveInstanceState(stateBundle);
-    }
+				if (SEARCH_OBJECT_REMOTE) {
+					showCenteredProgressDialog("Uploading...");
+				} else {
+					showCenteredProgressDialog("Searching...");
+				}
+				
+				preview.mCamera.setOneShotPreviewCallback(new Camera.PreviewCallback() {
+					@Override
+					public void onPreviewFrame(byte[] data, Camera camera) {
+						if (data == null) {
+							return;
+						}
+						preview.copyLastFrame(data);
+						freezePreview();
+						YuvImage yuv = new YuvImage(preview.getLastFrameCopy(),
+								ImageFormat.NV21, preview.mPreviewSize.width,
+								preview.mPreviewSize.height, null);
+						// initiate the snap search
+						processImageSnap(yuv);
+					}
+				});
+				
 
-    
-    @Override
-    public void onResume() {
-    	
-    	
-        super.onResume();
-        activityRunning.set(true);
-        iqe.resume();
-       
-        startLocalContinuousCapture();
-        
-    }
+			}
+		});
 
-    
-    @Override
-    public void onPause() {
+		if (!SEARCH_OBJECT_SNAP) {
+			snapButton.setVisibility(View.GONE);
+		}
+		
+	}
 
-        stopLocalContinuousCapture();
-        
-        activityRunning.set(false);
+	@Override
+	public void onResume() {
+		super.onResume();
+		activityRunning.set(true);
+		iqe.resume();
+		preview.setFrameReceiver(mreceiver);
+		if(preview.mCamera!=null){
+			unfreezePreview();
+		}
+	}
 
-        iqe.pause();
+	@Override
+	public void onPause() {
+		if (DEBUG) Log.d(TAG, "onPause");
+		
+		stopScanning();
+		iqe.pause();
+		historyItemDao.saveAll(history);
+		preview.stopPreview();
+		activityRunning.set(false);
+		super.onPause();
+	}
 
-        historyItemDao.saveAll(history);
+	private void startScanning() {
+		if(SEARCH_OBJECT_SCAN){
+			if(DEBUG) Log.d(TAG,"start scanning");
+			preview.mPreviewThreadRun.set(true);
+			iqe.goScan();
+			preview.scan();
+		}
+	}
+	
+	private void stopScanning(){
+		if(DEBUG) Log.d(TAG,"stop scanning");
+		preview.mPreviewThreadRun.set(false);
+	}
 
-        super.onPause();
-    }
+	private void freezePreview() {
+		// on old device freezing preview only shows a black screen
+		if(DEBUG) Log.d(TAG, "preview is freezed");
+		preview.stopPreview();
+		preview.PreviewCallbackScan();
+	}
 
+	private void unfreezePreview() {
+		preview.startPreview();
+		if(SEARCH_OBJECT_SCAN){
+			if (!pd.isShowing()){
+				startScanning();
+			}
+		}
+	}
 
-    private void startLocalContinuousCapture() {
-    	
-        Preview.FrameReceiver receiver = new DemoFrameReceiver();
+	private String lastPostedQid = null;
+	
+	private void createHistoryItem(String qid, String path, int callType) {
 
-        capturing.set(true);
-        preview.setFrameReceiver(receiver);
-    }
+		Bitmap thumb = null;
 
-    
-    private void stopLocalContinuousCapture() {
-        capturing.set(false);
-        preview.setFrameReceiver(null);
-    }
+		switch (callType) {
+		
+		case (IQE.scan):
+			try {
+				InputStream is = this.getAssets().open(
+						"iqedata/" + path + "/" + path + ".jpg");				
+				Bitmap origBmp = BitmapFactory.decodeStream(is);
+				thumb = transformBitmapToThumb(origBmp);
+			} catch (IOException e) {
+				thumb = null;
+			}
+			break;
+			
+		case (IQE.snap):
+			
+			Bitmap origBmp = BitmapFactory.decodeFile(path);
+			thumb = transformBitmapToThumb(origBmp);
+			thumb = Utils.rotateBitmap(thumb, preview.getAngle());
+			
+		}
 
-    
-    private void freezePreview() {
-           	preview.stopPreview();       	
-            }
-    
-    
+		HistoryItem item = new HistoryItem();
+		item.id = lastPostedQid = qid;
+		item.label = "Searching...";
+		item.uri = null;
+		item.thumb = thumb;
 
-    
-    private void unfreezePreview() {
-        handler.post(new Runnable() {
-            @Override
-            public void run() {
-                preview.mCamera.startPreview();
-            }
-        });
-    }
+		if (history.size() > MAX_ITEM_HISTORY)
+			history.remove(0);
 
-    
-    private void reenableRemoteMatch() {
-        remoteMatchInProgress.set(false);
-        unfreezePreview();
-        if (pd != null) {
-            pd.dismiss();
-        }
-        remoteMatchButton.setImageResource(R.drawable.ic_camera);
-    }
+		history.add(item);
 
-    
-    private ProgressDialog pd;
+		if (DEBUG) Log.d(TAG, "History item created for qid: " + qid);
+	}
 
-    private String lastPostedQid = null;
+	private Runnable postponedToastAction;
 
-    
-    // Called when results from a remote research are ready.
-    private OnResultCallback onRemoteResultCallback = new OnResultCallback() {
-    	
-        @Override
-        public void onResult(final String queryId, final String objId, final String objName,
-                String objMeta, boolean remoteMatch, Exception e) {
-        	
-        	// If no exceptions then process the match data.
-            if (e == null) {
-            	
-                if (queryId.equals(lastPostedQid)) {
-                    handler.removeCallbacks(postponedToastAction);
-                }
-                
-                Uri uri = null;
-                // match's Metadata set as URI.
-                if (objMeta != null) {
-                	
-                    try {
-                        uri = Uri.parse(objMeta);
-                    } catch (Exception e1) {
-                        uri = null;
-                    }
-                }
-                // if no Metadata : match's name set as URI.
-                if (uri == null) {
-                	
-                    if (objName != null) {
-                    	
-                        try {
-                            uri = Uri.parse(objName);
-                        } catch (Exception e1) {
-                            uri = null;
-                            
-                        }
-                    }
-                }
-                
-                final Uri fUri = uri;
-                handler.post(new Runnable() {
-                    @Override
-                    public void run() {
-                    	// process and display the results
-                        processSearchResult(queryId, objName, fUri, false);
-                    }
-                });
-            } 
-            // An exception occurred : no match found.
-            else {
-            	
-                if (e instanceof IOException) {
-                    Log.w(TAG, "Server call failed", e);
-                    handler.post(new Runnable() {
-                        @Override
-                        public void run() {
-                            handler.removeCallbacks(postponedToastAction);
-                            Toast.makeText(
-                                    DemoActivity.this,
-                                    "Unable to connect to the server. "
-                                            + "Check your intenet connection.", Toast.LENGTH_LONG)
-                                    .show();
-                            reenableRemoteMatch();
-                        }
-                    });
-                } else {
-                    Log.e(TAG, "Unable to complete remote search", e);
-                }
-                
-            }
-        }
+	/**
+	 * Method that starts a local and remote research on the phone.
+	 * onResultCallback is called when result is ready.
+	 * 
+	 * @param bmp
+	 *            A {@link Bitmap} image to process.
+	 */
 
-        
-        @Override
-        public void onQueryIdAssigned(String queryId, File imgFile) {
-            createHistoryItem(queryId, imgFile);
-        }
-        
-    };
+	private void processImageSnap(final YuvImage yuv) {
 
-    private void createHistoryItem(String qid, File imgFile) {
-    	
-    	Log.i(TAG, "start create thumb");
-        Bitmap origBmp = BitmapFactory.decodeFile(imgFile.getPath());
-        Bitmap thumb = transformBitmapToThumb(origBmp);
-        Log.i(TAG, "stop create thumb");
-        
-        HistoryItem item = new HistoryItem();
-        item.id = lastPostedQid = qid;
-        item.label = "Searching...";
-        item.uri = null;
-        item.thumb = thumb;
-        history.add(item);
-        
-        if (DEBUG) {
-            Log.d(TAG, "History item created for qid: "+qid);
-        }
-    }
+			postponedToastAction = new Runnable() {
+				public void run() {
+					if (SEARCH_OBJECT_REMOTE) {
+					Toast.makeText(
+							DemoActivity.this,
+							"This may take a minute... We will notify you when your photo is recognized.",
+							Toast.LENGTH_LONG).show();
+					}
+					pd.dismiss();
+					pd.pdDismissed();
+					unfreezePreview();
+					iqe.goScan();
+					snapButton
+					.setImageResource(R.drawable.ic_camera);
+				}
+			};
+			handler.postDelayed(postponedToastAction, REMOTE_MATCH_MAX_DURATION);
 
-    private Runnable postponedToastAction;
+			if (DEBUG) Log.d(TAG," snap decode message");
+		iqe.sendMessageAtFrontOfQueue(iqe.obtainMessage(IQE.CMD_DECODE, IQE.snap, 0, yuv));
+	}
 
-    /**
-     * Method that starts a local and remote research on the phone.
-     * onResultCallback is called when result is ready.
-     * 
-     * @param bmp
-     * 		  A {@link Bitmap} image to process.
-     */
-    
-    private void processImageLocallyAndRemotely(final YuvImage yuv) {
+	/**
+	 * Method that starts a local research on the phone. onResultCallback is
+	 * called when result is ready.
+	 * 
+	 * @param yuv
+	 *            A {@link YuvImage} to process.
+	 * 
+	 */
 
-        new Thread() {
-            public void run() {
-                postponedToastAction = new Runnable() {
-                    public void run() {
-                        reenableRemoteMatch();
-                        Toast.makeText(
-                                DemoActivity.this,
-                                "This may take a minute... We will notify you when your photo is recognized.",
-                                Toast.LENGTH_LONG).show();
-                    }
-                };
-                handler.postDelayed(postponedToastAction, REMOTE_MATCH_MAX_DURATION);
-                iqe.searchWithImage(yuv, onRemoteResultCallback);
+	private void processImageScan(final YuvImage yuv) {
+		if (DEBUG) Log.d(TAG,"scan decode message");
+		iqe.goScan();
+		Message.obtain(iqe, IQE.CMD_DECODE, IQE.scan, 0, yuv).sendToTarget();
+	}
 
-                handler.post(new Runnable() {
-                    public void run() {
-                        pd.setMessage("Searching...");
-                    }
-                });
-            }
-        }.start();
-    }
+	/**
+	 * Checks if the Uri provided is good and displays it.
+	 * 
+	 * @param a
+	 *            The current {@link Activity}.
+	 * @param uri
+	 *            The {@link Uri} to analyze.
+	 * @return
+	 */
 
-    /**
-     * Method that starts a local research on the phone.
-     * onResultCallback is called when result is ready.
-     * 
-     * @param yuv
-     * 		  A {@link YuvImage} to process.
-     * 
-     */ 
-    
-    private void processImageNative(final YuvImage yuv) {
-    	
-        Thread.yield();
-        // starts the local search.
-        iqe.searchWithImageLocal(yuv, new OnResultCallback() {
-            private File imgFile;
+	static boolean processMetaUri(Activity a, Uri uri) {
 
-            @Override
-            public void onQueryIdAssigned(String queryId, File imgFile) {
-                this.imgFile = imgFile;
-                // we create history items only for successful continuous searches.
-            }
+		if (uri != null && uri.toString().length() > 0) {
+			try {
+				a.startActivity(new Intent(Intent.ACTION_VIEW, uri));
+				return true;
+			} catch (ActivityNotFoundException e) {
+				Log.w(TAG,
+						"Unable to open view for this meta: " + uri.toString(),
+						e);
+				return false;
+			}
+		} else {
+			return false;
+		}
+	}
 
-            // Called when match found.
-            @Override
-            public void onResult(final String queryId, String objId, final String objName,
-                    String objMeta, boolean remoteMatch, Exception e) {
-            	
-                if (e != null) {
-                    Log.e(TAG, "Unable to complete local search", e);
-                    return;
-                }
+	/**
+	 * Processes the data from the match found and manage the UI.
+	 * 
+	 * @param searchId
+	 *            A {@link String} that identifies the query.
+	 * @param label
+	 *            A {@link String} that gives the match found label.
+	 * @param uri
+	 *            A {@link Uri} representing the Metadata of the match found.
+	 * @param continousSearch
+	 *            A {@link Boolean} whether the continuous local search is
+	 *            enable or not.
+	 */
 
-                //Match found by the local search.
-                if (objId != null) {
-                    createHistoryItem(queryId, imgFile);
+	private void processSearchResult(String searchId, String label, Uri uri,
+			final int callType) {
 
-                    Uri uri = null;
-                    //Match's Metadata set as Uri. 
-                    if (objMeta != null) {
-                        try {
-                            uri = Uri.parse(objMeta);
-                        } catch (Exception e1) {
-                            uri = null;
-                        }
-                    }
+		HistoryItem item = null;
+		///////// find the linked history item /////////
+		//********************************************//
+		for (Iterator<HistoryItem> iter = history.iterator();;) {
+			if (!iter.hasNext()) {
+				break;
+			}
+			item = iter.next();
+			if (searchId.equals(item.id)) {
+				if (DEBUG) Log.d(TAG, "" + item.id);
+				if (DEBUG) Log.d(TAG, "" + searchId);
+				item.label = label;
+				item.uri = uri;
+				break;
+			} else {
+				item = null;
+			}
+		}
 
-                    final Uri fUri = uri;
-                    handler.post(new Runnable() {
-                        public void run() {
-                        	
-                            processSearchResult(queryId, objName, fUri, true);
-                        }
-                    });
-                } else {
-                	// No match found.
-                    if (DEBUG)
-                        Log.d(TAG, "No match detected");
-                    localMatchInProgress.set(false);
-                }
-            }
+		if (item == null) {
+			if (DEBUG) Log.w(TAG, "No entry found for qid: " + searchId);
+			startScanning();
+			return;
+		}
+		historyListAdapter.notifyDataSetChanged();
+		//*********************************************//
+		/////////////////////////////////////////////////
 
-        });
-        Thread.yield();
-    }
+		if (!activityRunning.get()) {
+			return;
+		}
 
-    /**
-     * Checks if the Uri provided is good and displays it.
-     * 
-     * @param a
-     * 		  The current {@link Activity}.
-     * @param uri
-     * 		  The {@link Uri} to analyze.
-     * @return
-     */
-    
-    static boolean processMetaUri(Activity a, Uri uri) {
-        if (uri != null && uri.toString().length() > 0) {
-            try {
-                a.startActivity(new Intent(Intent.ACTION_VIEW, uri));
-                return true;
-            } catch (ActivityNotFoundException e) {
-                Log.w(TAG, "Unable to open view for this meta: " + uri.toString(), e);
-                //Toast.makeText(a, "Unable to open view for this meta-field: " + uri.toString(),
-                  //      Toast.LENGTH_LONG).show();
-                return false;
-            }
-        } else {
-            return false;
-        }
-    } 
-    
-    /**
-     * Processes the data from the match found and manage the UI.
-     * 
-     * @param searchId
-     * 		  A {@link String} that identifies the query.
-     * @param label
-     * 		  A {@link String} that gives the match found label.
-     * @param uri
-     * 		  A {@link Uri} representing the Metadata of the match found.
-     * @param continousSearch
-     * 		  A {@link Boolean} whether the continuous local search is enable or not.
-     */
-    
-    
-    private void processSearchResult(String searchId, String label, Uri uri, boolean continousSearch) {
-        HistoryItem item = null;
+		
+//		does not display the result if the query isn't the last posted
+//		if (!searchId.equals(lastPostedQid)) {
+//			return;
+//		}
+		
+		
+		Boolean validUri = false;
+		// Try to display the resources from the Uri. //
+		//********************************************//
+		if (uri == null) {
+			UrlValidator urlValidator = new UrlValidator();
+			if (urlValidator.isValid(label)) {
+				validUri = true;
+				Uri Buri = Uri.parse(label);
+				this.startActivity(new Intent(Intent.ACTION_VIEW, Buri));	
+			}
 
-        for (Iterator<HistoryItem> iter = history.iterator();;) {
-        	
-            if (!iter.hasNext()) {
-                break;
-            }
-            item = iter.next();
-            
-            // Checks the query corresponding to the match. Set the data.
-            if (searchId.equals(item.id)) {
-                item.label = label;
-                item.uri = uri;
-                break;
-            } else {
-                item = null;
-            }
-        }
+		} else {
+			validUri = processMetaUri(this, uri);
+		}
+		//*********************************************//
+		/////////////////////////////////////////////////
 
-        // If no query corresponds, then stop.
-        if (item == null) {
-            Log.w(TAG, "No entry found for qid: " + searchId);
-            return;
-        }
+		// If no Metadata available, just display the match found and the label.
 
-        historyListAdapter.notifyDataSetChanged();
+		if (!validUri) {
+			displayResult(item, callType, null);
+		}
+	}
 
-        if (!activityRunning.get()) {
-            localMatchInProgress.set(false);
-            return;
-        }
+	private void displayResult(final HistoryItem item, final int callType,
+			File imgFile) {
+		
+		preview.mPreviewThreadRun.set(false);
+		
+		if(DEBUG) Log.d(TAG,"display results");
+		
+		// do no add results on top of others.
+		if (ad !=null){
+			if(ad.isShowing()){
+				return;
+			}
+		}
+		
+		AlertDialog.Builder builder = new AlertDialog.Builder(this);
+		View resultView = getLayoutInflater().inflate(R.layout.match_dialog,
+				null);
+		TextView tv = (TextView) resultView.findViewById(R.id.matchLabelTv);
+		ImageView iv = (ImageView) resultView.findViewById(R.id.matchThumbIv);
+		final Activity ac = this;
 
-        if (!searchId.equals(lastPostedQid) && !continousSearch) {
-            localMatchInProgress.set(false);
-            return;
-        }
+		/////// set a shop button for successful matches ///////
+		//****************************************************//
+ 		if (item != null) {
+			iv.setImageBitmap(item.thumb);
+			tv.setText(item.label);
+			if (item.label != IQE.NO_MATCH_FOUND_STR) {
+				builder.setNeutralButton("Shop",
+						new DialogInterface.OnClickListener() {
 
-        // Try to display the resources from the Uri.
-        boolean validUri = processMetaUri(this, uri);
-        
-        // If no Metadata available, just display the match found and the label.
-        // all commentaries in the next bracket are for devices older than Honeycomb.
-        if (!validUri) {
-        	
-            AlertDialog.Builder builder = new AlertDialog.Builder(this);
-            View resultView = getLayoutInflater().inflate(R.layout.match_dialog, null);
-            ImageView iv = (ImageView) resultView.findViewById(R.id.matchThumbIv);
-            iv.setImageBitmap(item.thumb);
-            TextView tv = (TextView) resultView.findViewById(R.id.matchLabelTv);
-            tv.setText(item.label);
-            builder.setView(resultView);
-            builder.setTitle("Result");
-            
-            builder.setCancelable(true);
-            builder.setPositiveButton("Ok", new DialogInterface.OnClickListener() {
-            	
-                @Override
-                public void onClick(DialogInterface dialog, int which) {
-                    localMatchInProgress.set(false);
-                    reenableRemoteMatch();
-                }
-            });
-            AlertDialog pd = builder.create();
-            pd.show();
+							@Override
+							public void onClick(DialogInterface dialog,
+									int which) {
+								if(pd.isShowing()){
+									iqe.goScan();
+									pd.dismiss();
+									pd.pdDismissed();
+									unfreezePreview();
+								}else{
+									if(callType==IQE.scan) startScanning();
+								}
+								snapButton
+										.setImageResource(R.drawable.ic_camera);
+								if (!processMetaUri(ac, Uri.parse(item.label))) {
+									Uri uriShop = Uri
+											.parse("http://google.com//search?q="
+													+ Uri.parse(item.label)
+													+ "&tbm=shop");
+									processMetaUri(ac, uriShop);
+								}
+							}
+						});
+			}
+		//****************************************************//
+		////////////////////////////////////////////////////////	
+		} else {
+			tv.setText(IQE.NO_MATCH_FOUND_STR);
+			Bitmap origBmp = BitmapFactory.decodeFile(imgFile.getPath());
+			Bitmap thumb = transformBitmapToThumb(origBmp);
+			Bitmap rotThumb = Utils.rotateBitmap(thumb, preview.getAngle());
+			iv.setImageBitmap(rotThumb);
+		}
+		builder.setView(resultView);
+		builder.setTitle("Result");
 
-        } else {
-            localMatchInProgress.set(false);
-            reenableRemoteMatch();
-        }
-    }
+		builder.setCancelable(true);
+		builder.setPositiveButton("Ok", new DialogInterface.OnClickListener() {
 
-    private Bitmap transformBitmapToThumb(Bitmap origBmp) {
-        int thumbSize = getResources().getDimensionPixelSize(R.dimen.thumb_size);
-        return Utils.cropBitmap(origBmp, thumbSize);
-    }
+			@Override
+			public void onClick(DialogInterface dialog, int which) {
+				if(pd.isShowing){
+					iqe.goScan();
+					pd.dismiss();
+					pd.pdDismissed();
+					unfreezePreview();
+				}else{
+					if(callType==IQE.scan) startScanning();
+				}
+				snapButton.setImageResource(R.drawable.ic_camera);
+			}
+		}); 
+		ad = builder.create();
+		ad.setCanceledOnTouchOutside(false);
+		ad.setCancelable(false);
+		ad.show();
+	}
 
-    private ProgressDialog showCenteredProgressDialog(String msg) {
-        View titleView = new View(this);
+	class DemoFrameReceiver implements Preview.FrameReceiver {
 
-        ProgressDialog pd = new ProgressDialog(this);
-        pd.setMessage(msg);
-        if (Build.VERSION.SDK_INT < 11) {
-            pd.setCustomTitle(titleView);
-        }
-        pd.setCanceledOnTouchOutside(false);
-        pd.setCancelable(false);
-        pd.show();
+		/**
+		 * Starts the continuous local search with the displayed frames.
+		 * 
+		 * @param frameBuffer
+		 *            A {@link Byte} array, the frame's data.
+		 * @param framePreviewSize
+		 *            A {@link Size}, the frame dimensions.
+		 */
+		
+		
+		@Override
+		public void onFrameReceived(byte[] frameBuffer, Size framePreviewSize) {
 
-        return pd;
-    }
+			
+			if (!preview.mPreviewThreadRun.get()) {
+				return;
+			}
+			
+			 if(frameBuffer == null){
+				if (DEBUG) Log.d(TAG,"no picture");
+				return;
+			}
+			
+			YuvImage yuvImage = new YuvImage(frameBuffer, 17,
+			framePreviewSize.width, framePreviewSize.height, null);
+			// analyze the picture.
+			processImageScan(yuvImage);
+			
+		}
+		
+		
+	}
 
-    class DemoFrameReceiver implements Preview.FrameReceiver {
+	/**
+	 * Interface used to communicate with the iqe class
+	 */
 
-    	
-    	
-    	/**
-    	 * Starts the continuous local search with the displayed frames.
-    	 * 
-    	 * @param frameBuffer
-    	 * 		A {@link Byte} array, the frame's data.
-    	 * @param framePreviewSize
-    	 * 		A {@link Size}, the frame dimensions.
-    	 */
-    	
-        @Override
-        public void onFrameReceived(byte[] frameBuffer, Size framePreviewSize) {
-            if (!iqe.isIndexInitialized()) {
-                // local index is not initialized yet
-                return;
-            }
-            
-            if (!capturing.get()) {
-                return;
-            }
+	private OnResultCallback onResultCallback = new OnResultCallback() {
 
-            if (!remoteMatchInProgress.get()){
-            	
-                if (!SEARCH_OBJECT_LOCAL_CONTINUOUS) {
-                    return;
-                }
-                if (localMatchInProgress.get()) {
-                    return;
-                }
-                localMatchInProgress.set(true);
-                
-               
-                // convert the data to a YuvImage
-                YuvImage yuvImage = new YuvImage (frameBuffer, 17, framePreviewSize.width, framePreviewSize.height,null);
-                // analyze the picture.
-                processImageNative(yuvImage);
-            }
-        }
+		/**
+		 * Called whenever a query is done (In the demo app, we call it on every
+		 * snap queries and on Successful scan queries)
+		 * 
+		 * @param queryId
+		 *            A {@link String}, the unique Id of the query.
+		 * @param path
+		 *            A {@link String}, the path of the picture associated with
+		 *            the query.
+		 * @param callType
+		 *            An {@link Integer}, defines if it's a snap or a scan call.
+		 */
 
-    };
+		@Override
+		public void onQueryIdAssigned(String queryId, String path, int callType) {
 
+			switch (callType) {
+			
+			case (IQE.scan):
+				createHistoryItem(queryId, path, IQE.scan);
+				break;
+			
+			case (IQE.snap):
+				createHistoryItem(queryId, path, IQE.snap);
+				if (SEARCH_OBJECT_REMOTE) {
+					handler.post(new Runnable() {
+
+						@Override
+						public void run() {
+							pd.setMessage("Searching...");
+						}
+					});
+				}
+				break;
+			}
+		}
+
+		/**
+		 * Handle the results.
+		 * 
+		 * @param queryId
+		 *            A {@link String}, the unique Id of the query.
+		 * @param objId
+		 *            A {@link String}, the unique Id identifying the object on
+		 *            our server. * @param objId A {@link String}, the object
+		 *            label. * @param objId A {@link String}, the object
+		 *            metadata. * @param objId A {@link Integer}, determines
+		 *            which engine made the match (barcode, local, remote).
+		 * @param callType
+		 *            An {@link Integer}, defines if it's a snap or a scan call.
+		 */
+
+		@Override
+		public void onResult(String queryId, String objId, String objName,
+				String objMeta, int engine, final int callType) {
+
+			final String qId = queryId;
+			final String oNm = objName;
+			
+			// if the it is a barcode
+			if (engine == IQE.barcode) {
+				handler.post(new Runnable() {
+					public void run() {
+						if (callType==IQE.snap) {
+							handler.removeCallbacks(postponedToastAction);
+						}
+						processSearchResult(qId, oNm, null, IQE.scan);
+					}
+				});
+				return;
+			}
+			
+			//if it is a local match
+			if (engine == IQE.local){
+				handler.post(new Runnable() {
+					public void run() {
+						if (callType==IQE.snap) {
+							handler.removeCallbacks(postponedToastAction);
+						}
+						processSearchResult(qId, oNm, null, IQE.scan);
+					}
+				});
+				return;
+			}
+			
+			//if it is a remote match
+			else {
+				if (queryId.equals(lastPostedQid)) {
+					handler.removeCallbacks(postponedToastAction);
+				}
+				Uri uri = null;
+				// match's Metadata set as URI.
+				if (objMeta != null) {
+
+					try {
+						uri = Uri.parse(objMeta);
+					} catch (Exception e1) {
+						uri = null;
+					}
+				}
+				// if no Metadata : match's name set as URI.
+				if (uri == null) {
+
+					if (objName != null) {
+
+						try {
+							uri = Uri.parse(objName);
+						} catch (Exception e1) {
+							uri = null;
+						}
+					}
+				}
+				final Uri fUri = uri;
+				handler.post(new Runnable() {
+					@Override
+					public void run() {
+						// process and display the results
+						processSearchResult(qId, oNm, fUri, callType);
+					}
+				});
+			}
+		}
+
+		/**
+		 * When no match are found, or exception occurs.
+		 * 
+		 * 
+		 */
+
+		@Override
+		public void onNoResult(int callType, Exception e, File imgFile) {
+			
+			// if an exception occured
+			if (e != null) {
+				if (e instanceof IOException) {
+					Log.w(TAG, "Server call failed", e);
+					handler.post(new Runnable() {
+						@Override
+						public void run() {
+							handler.removeCallbacks(postponedToastAction);
+							Toast.makeText(
+									DemoActivity.this,
+									"Unable to connect to the server. "
+											+ "Check your intenet connection.",
+									Toast.LENGTH_LONG).show();
+							pd.dismiss();
+							pd.pdDismissed();
+							unfreezePreview();
+						}
+					});
+				} else {
+					Log.e(TAG, "Unable to complete search", e);
+				}
+				return;
+			}
+			// if just nothing found
+			switch (callType) {
+				
+			case (IQE.scan):
+				startScanning();
+				break;
+
+			case (IQE.snap):
+				displayResult(null, IQE.snap, imgFile);
+				break;
+			}
+		}
+	};
+
+	private Bitmap transformBitmapToThumb(Bitmap origBmp) {
+		int thumbSize = getResources()
+				.getDimensionPixelSize(R.dimen.thumb_size);
+		return Utils.cropBitmap(origBmp, thumbSize);
+	}
+
+	private class QueryProgressDialog extends ProgressDialog {
+
+		private boolean isShowing;
+		
+		public QueryProgressDialog(Activity activity) {
+			super(activity);
+			this.isShowing=false;
+		}
+		
+		public void pdShowing(){
+			this.isShowing=true;
+		}
+		
+		public void pdDismissed(){
+			this.isShowing=false;
+		}
+		
+		public boolean isShowing(){
+			return isShowing;
+		}
+
+	}
+	
+	public QueryProgressDialog showCenteredProgressDialog(final String msg) {
+		
+		pd.setCanceledOnTouchOutside(false);
+		pd.setCancelable(false);
+		pd.show();
+		pd.pdShowing();
+		handler.post(new Runnable() {
+			@Override
+			public void run() {
+				pd.setMessage(msg);
+			}
+		});
+		return pd;
+		}
 }

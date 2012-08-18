@@ -1,7 +1,9 @@
 package com.iqengines.sdk;
 
+import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileOutputStream;
+import java.io.FileReader;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
@@ -113,6 +115,7 @@ public class IQLocal implements IQLocalApi {
     private class WorkerThread extends Thread {
         @Override
         public void run() {
+        	
             Looper.prepare();
             workerHandler = new Handler() {
                 @Override
@@ -199,8 +202,10 @@ public class IQLocal implements IQLocalApi {
 	
 	
 	private void prepareAsync() {
+		
 	    if (workerThread != null)
 	        return;
+	    
 	    workerThread = new WorkerThread();
 	    workerThread.start();
 	    
@@ -220,13 +225,7 @@ public class IQLocal implements IQLocalApi {
 	 */
 	@Override
 	public int match(Mat img) {
-		
-	    final int width = img.cols();
-	    final int height = img.rows();
-	    final int min = width < height ? width: height;
-	    final Mat cropped = img.submat((width - min/2)/2, (height - min/2)/2, min/2, min/2);
-	    Mat scaled = cropped.resize(IMAGE_SIZE, IMAGE_SIZE);
-		return match(nativeObj, scaled.nativeObj);
+		return match(nativeObj, img.nativeObj);
 	}
 	
 	
@@ -318,7 +317,6 @@ public class IQLocal implements IQLocalApi {
 	public void load(String indexPath, String imagesPath, OnReady callback) {
 	    if (callback == null)
 	        throw new IllegalArgumentException();
-	    
 	    workerHandler.sendMessage(Message.obtain(workerHandler, CMD_LOAD,
 	            new ArgLoad(indexPath, imagesPath, callback)));
 	}
@@ -356,27 +354,39 @@ public class IQLocal implements IQLocalApi {
 	 */
 	@Override
 	public void init(Resources res, File appDataDir, OnReady callback) {
+		
+		
+		
 	    if (callback == null)
 	        throw new IllegalArgumentException();
-	    
 	    prepareAsync();
-	    
 	    workerHandler.sendMessage(Message.obtain(workerHandler, CMD_INIT, 
-	    		new ArgInit(res, appDataDir, callback)));		
+	    		new ArgInit(res, appDataDir, callback)));	
 	}
 	
+	private static void list_tree(File root, String tab){
+		File[] children = root.listFiles();
+        if (children != null && children.length > 0) {
+            
+            for (File child : children) {
+                list_tree(child, tab+"\t");
+            }
+        }
+        
+	}
 	
 	/* (non-Javadoc)
 	 * @see com.iqengines.sdk.IQLocalApi#init(android.content.res.Resources, java.io.File)
 	 */
 	@Override
-	public void init(Resources res, File appDataDir) {
+	public void init(Resources res, File appDataDir) {	
         mDataPath = new File(appDataDir, "iqedata");
-
-		if (unpackInitialAssets(res, appDataDir)) {
+        boolean works = unpackInitialAssets(res, appDataDir);
+                
+		if (works) {
+			list_tree(mDataPath, "");
 			File index = new File(mDataPath, "objects.json");
-			load(index, mDataPath);
-	
+			load(index, mDataPath);            
 			train();
 		}
 	}
@@ -412,48 +422,60 @@ public class IQLocal implements IQLocalApi {
         File inRoot = new File("iqedata");
         
         try {
-            unpackAssets(am, inRoot, mDataPath);
+            unpackAssets(am, inRoot, mDataPath);            
             return true;
         } catch (IOException e) {
             Log.e(TAG, "Can't unpack initial iq-index", e);
             return false;
         }
     }
-    
-    
-    private static void unpackAssets(AssetManager am, File in, File out) throws IOException {
-        String[] children = am.list(in.getPath());
-        if (children != null && children.length > 0) {
-            if (!out.exists())
-                out.mkdirs();
-            
-            for (String child : children) {
-                unpackAssets(am, new File(in, child), new File(out, child));
-            }
+       
+	private static void unpackAssets(AssetManager am, File in, File out) throws IOException {
+        // Read objects.json to get all files that should be loaded.
+        out.mkdirs();
+        copyFiles(am, new File(in, "copy.txt"), new File(out, "copy.txt"));
+        copyFiles(am, new File(in, "objects.json"), new File(out, "objects.json"));
+        FileReader freader = new FileReader(new File(out.getPath() + "/copy.txt"));
+        BufferedReader reader = new BufferedReader(freader);
+        String line;
+        boolean dirs = true;
+        while ((line = reader.readLine()) != null) {
+        	if(line.compareToIgnoreCase("---FILES---") == 0){
+        		dirs = false;
+        		continue;
+        	}
+        	if(dirs){
+        		File direct = new File(out, line);
+            	direct.mkdirs();
+        	} else {
+        		copyFiles(am, new File(in + "/" + line), new File(out + "/" +  line));
+        	}
         }
-        else {
-            InputStream is = null;
-            OutputStream os = null;
-            try {
-                is = am.open(in.getPath());
-                os = new FileOutputStream(out);
-                
-                byte[] buf = new byte[4096];
-                int len;
-                while ((len = is.read(buf)) > 0)
-                    os.write(buf, 0, len);
-            }
-            finally {
-                if (is != null)
-                    is.close();
-                if (os != null)
-                    os.close();
-            }
+	}
+    
+    private static void copyFiles(AssetManager am, File in, File out) throws IOException{
+        InputStream is = null;
+        OutputStream os = null;
+        try {
+            is = am.open(in.getPath());
+            os = new FileOutputStream(out);
+
+            byte[] buf = new byte[32000];
+            int len;
+            while ((len = is.read(buf)) > 0)
+                os.write(buf, 0, len);
+        }
+        finally {
+            if (is != null)
+                is.close();
+            if (os != null)
+                os.close();
         }
     }
-
     
 	public File getDataPath() {
 		return mDataPath;
 	}
 }
+
+

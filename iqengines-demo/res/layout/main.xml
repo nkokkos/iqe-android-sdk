@@ -22,15 +22,7 @@
             android:scaleType="fitXY"
             android:visibility="invisible" />
 
-        <ImageView
-            android:contentDescription="@string/desc_targetArea"
-            android:id="@+id/targetArea"
-            android:layout_width="fill_parent"
-            android:layout_height="fill_parent"
-            android:padding="30dp"
-            android:scaleType="fitXY"
-            android:src="@drawable/working_area"
-            android:visibility="visible" />
+        
             
     </FrameLayout>
 
@@ -47,7 +39,7 @@
             
             <ImageButton 
                 android:contentDescription="@string/desc_infoButton"
-                android:id="@+id/infoButton"
+                android:id="@+id/tutoButton"
                 android:layout_width="48dp" 
                 android:layout_height="48dp"
                 android:layout_gravity="left|center_vertical" 

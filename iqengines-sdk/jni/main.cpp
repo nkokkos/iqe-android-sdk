@@ -8,6 +8,14 @@
 
 #define TAG "IQIndex NATIVE"
 
+#ifdef ANDROID
+#define ANDROID_DEBUG
+#include <android/log.h>
+#define APPNAME "TOBI_debug"
+//#define ANDROID_STOREIMAGES
+#endif
+
+
 #define JNI_GLOBAL extern "C"
 
 #ifdef _DEBUG
@@ -24,7 +32,6 @@ JNI_GLOBAL jint JNI_OnLoad(JavaVM* vm, void* /*reserved*/)
     JNIEnv *env;
     if (vm->GetEnv((void**)&env, jversion) != JNI_OK)
         return -1;
-
     clsRuntimeException = env->FindClass("java/lang/RuntimeException");
 
     // TODO: do native initialization here
@@ -55,37 +62,51 @@ static Mat *mat(jlong nativeObj)
     return reinterpret_cast<Mat *>(nativeObj);
 }
 
-JNI_GLOBAL jlong JNICALL Java_com_iqengines_sdk_Mat_create_1n
-  (JNIEnv *env, jobject, jstring file)
-{
-    const char *native_file = env->GetStringUTFChars(file, 0);
-    Mat obj = cv::imread(native_file);
-    env->ReleaseStringUTFChars(file, native_file);
+//JNI_GLOBAL jlong JNICALL Java_com_iqengines_sdk_Mat_create_1n
+//  (JNIEnv *env, jobject, jstring file)
+//{
+//    const char *native_file = env->GetStringUTFChars(file, 0);
+//    Mat obj = cv::imread(native_file);
+//    env->ReleaseStringUTFChars(file, native_file);
+//
+//    return reinterpret_cast<jlong>(new Mat(obj));
+//}
 
-    return reinterpret_cast<jlong>(new Mat(obj));
+JNI_GLOBAL jlong JNICALL Java_com_iqengines_sdk_Mat_convert_1n
+  (JNIEnv *env, jobject, jbyteArray yuv, jint width, jint height)
+{
+
+	jbyte* _yuv  = env->GetByteArrayElements(yuv, 0);
+	Mat myuv(height, width, CV_8UC1, (unsigned char *)_yuv);
+	env->ReleaseByteArrayElements(yuv, _yuv, 0);
+	return reinterpret_cast<jlong>(new Mat(myuv));
 }
 
 JNI_GLOBAL void JNICALL Java_com_iqengines_sdk_Mat_destroy_1n
   (JNIEnv *env, jobject, jlong nativeObj)
 {
+
     delete mat(nativeObj);
 }
 
 JNI_GLOBAL jint JNICALL Java_com_iqengines_sdk_Mat_cols_1n
   (JNIEnv *env, jobject, jlong nativeObj)
 {
+
     return mat(nativeObj)->cols;
 }
 
 JNI_GLOBAL jint JNICALL Java_com_iqengines_sdk_Mat_rows_1n
   (JNIEnv *env, jobject, jlong nativeObj)
 {
+
     return mat(nativeObj)->rows;
 }
 
 JNI_GLOBAL jlong JNICALL Java_com_iqengines_sdk_Mat_submat_1n
   (JNIEnv *env, jobject, jlong nativeObj, jint x, jint y, jint width, jint height)
 {
+
     Mat obj = (*mat(nativeObj))(Rect(x, y, width, height));
     return reinterpret_cast<jlong>(new Mat(obj));
 }
@@ -93,9 +114,26 @@ JNI_GLOBAL jlong JNICALL Java_com_iqengines_sdk_Mat_submat_1n
 JNI_GLOBAL jlong JNICALL Java_com_iqengines_sdk_Mat_resize_1n
   (JNIEnv *env, jobject, jlong nativeObj, jint width, jint height)
 {
+
     Mat obj;
     cv::resize(*mat(nativeObj), obj, Size(width, height));
     return reinterpret_cast<jlong>(new Mat(obj));
+}
+
+// Utils implementations
+
+JNI_GLOBAL void Java_com_iqengines_sdk_Utils_rotateData(JNIEnv *env, jobject obj,
+		jbyteArray src, jint width, jint height, jbyteArray dst){
+
+	jbyte* _src = env->GetByteArrayElements(src, 0);
+	Mat myuv(height, width, CV_8UC1, (unsigned char *)_src);
+	env->ReleaseByteArrayElements(src, _src, 0);
+
+	flip(myuv, myuv, 1);
+	myuv = myuv.t();
+
+	int len = myuv.rows*myuv.cols;
+	env->SetByteArrayRegion(dst, 0, len, (jbyte*)myuv.data);
 }
 
 // IQIndex implementation
@@ -105,30 +143,30 @@ static IQIndex *index(jlong nativeObj)
     return reinterpret_cast<IQIndex *>(nativeObj);
 }
 
-JNI_GLOBAL jlong Java_com_iqengines_sdk_IQLocal_nativeCreate(JNIEnv *env, jobject )
+JNI_GLOBAL jlong Java_com_iqengines_sdk_IQLocal_nativeCreate(JNIEnv *env, jobject sobj )
 {
-    return reinterpret_cast<jlong>(new IQIndex());
+    return reinterpret_cast<jlong>(get_instance());
 }
 
 JNI_GLOBAL void Java_com_iqengines_sdk_IQLocal_nativeDestroy(JNIEnv *env, jobject , jlong nativeObj)
 {
-    delete index(nativeObj);
+//    delete index(nativeObj);
 }
 
 JNI_GLOBAL jint Java_com_iqengines_sdk_IQLocal_load(JNIEnv* env, jobject , jlong nativeObj, jstring indexPath, jstring imagesPath)
 {
+
     TRACE_ENTER;
 
     try
     {
-        const char *index_path = env->GetStringUTFChars(indexPath, 0);
+    	const char *index_path = env->GetStringUTFChars(indexPath, 0);
         const char *images_path = env->GetStringUTFChars(imagesPath, 0);
 
         int result = index(nativeObj)->load(index_path, images_path);
 
         env->ReleaseStringUTFChars(indexPath, index_path);
         env->ReleaseStringUTFChars(imagesPath, images_path);
-
         return result;
     }
     catch (...)
@@ -139,6 +177,7 @@ JNI_GLOBAL jint Java_com_iqengines_sdk_IQLocal_load(JNIEnv* env, jobject , jlong
 
 JNI_GLOBAL jint Java_com_iqengines_sdk_IQLocal_match(JNIEnv* env, jobject , jlong nativeObj, jlong matObj)
 {
+
     TRACE_ENTER;
     try
     {
@@ -152,6 +191,7 @@ JNI_GLOBAL jint Java_com_iqengines_sdk_IQLocal_match(JNIEnv* env, jobject , jlon
 
 JNI_GLOBAL jint Java_com_iqengines_sdk_IQLocal_train(JNIEnv* env, jobject , jlong nativeObj)
 {
+
     TRACE_ENTER;
     try
     {
@@ -165,6 +205,7 @@ JNI_GLOBAL jint Java_com_iqengines_sdk_IQLocal_train(JNIEnv* env, jobject , jlon
 
 JNI_GLOBAL jint Java_com_iqengines_sdk_IQLocal_compute(JNIEnv* env, jobject , jlong nativeObj, jlong matObj, jstring arg1, jstring arg2 )
 {
+
     TRACE_ENTER;
 
     try
@@ -187,6 +228,7 @@ JNI_GLOBAL jint Java_com_iqengines_sdk_IQLocal_compute(JNIEnv* env, jobject , jl
 
 JNI_GLOBAL jint Java_com_iqengines_sdk_IQLocal_getObjCount(JNIEnv *env, jobject , jlong nativeObj)
 {
+
     TRACE_ENTER;
     try
     {
@@ -200,6 +242,7 @@ JNI_GLOBAL jint Java_com_iqengines_sdk_IQLocal_getObjCount(JNIEnv *env, jobject 
 
 JNI_GLOBAL jstring Java_com_iqengines_sdk_IQLocal_getObjId(JNIEnv *env, jobject , jlong nativeObj, jint idx)
 {
+
     TRACE_ENTER;
     try
     {
@@ -214,6 +257,7 @@ JNI_GLOBAL jstring Java_com_iqengines_sdk_IQLocal_getObjId(JNIEnv *env, jobject 
 
 JNI_GLOBAL jstring Java_com_iqengines_sdk_IQLocal_getObjName(JNIEnv *env, jobject , jlong nativeObj, jstring objId)
 {
+
     TRACE_ENTER;
     try
     {
@@ -236,6 +280,7 @@ JNI_GLOBAL jstring Java_com_iqengines_sdk_IQLocal_getObjName(JNIEnv *env, jobjec
 
 JNI_GLOBAL jstring Java_com_iqengines_sdk_IQLocal_getObjMeta(JNIEnv *env, jobject , jlong nativeObj, jstring objId)
 {
+
     TRACE_ENTER;
     try
     {

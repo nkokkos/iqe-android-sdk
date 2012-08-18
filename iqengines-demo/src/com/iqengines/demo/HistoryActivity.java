@@ -32,26 +32,20 @@ public class HistoryActivity extends Activity {
         super.onCreate(savedInstanceState);
         requestWindowFeature(Window.FEATURE_NO_TITLE);
         setContentView(R.layout.history);
-        DemoActivity.iqe.pause();
         initUi();
     }
 
     private void initUi() {
-    	
     	historyListView = (ListView) findViewById(R.id.list);
-
         historyListView.setOnItemClickListener(new OnItemClickListener() {
             @Override
             public void onItemClick(AdapterView<?> parentView, View view, int position, long id) {
                 HistoryItem item = (HistoryItem) historyListView.getAdapter().getItem(position);
                 if(item.label!=null)
                 uriShop = Uri.parse("http://google.com//search?q="+Uri.parse(item.label)+"&tbm=shop");
-                
                 DemoActivity.processMetaUri(HistoryActivity.this, uriShop);
             }
-            
         });
-        
         
         goBack = (ImageButton) findViewById(R.id.goBack);
         goBack.setOnClickListener(new View.OnClickListener() {
@@ -62,8 +56,6 @@ public class HistoryActivity extends Activity {
                 startActivity(intent);
             }
         });
-        
-        
 
         // empty header to show separator on the top of the view per
         historyListView.setHeaderDividersEnabled(false);
@@ -74,15 +66,11 @@ public class HistoryActivity extends Activity {
     @Override
     public void onResume() {
         historyListView.setAdapter(DemoActivity.historyListAdapter);
-
-        DemoActivity.iqe.resume();
-        
         super.onResume();
     }
 
     @Override
     public void onPause() {
-        DemoActivity.iqe.pause();     
         super.onPause();
     }
 
@@ -91,7 +79,7 @@ public class HistoryActivity extends Activity {
         if (v.getId() == R.id.list) {
             AdapterView.AdapterContextMenuInfo info = (AdapterView.AdapterContextMenuInfo) menuInfo;
             HistoryItem item = (HistoryItem) DemoActivity.historyListAdapter
-                    .getItem(info.position/* - 1 subtracting header view-item */);
+                    .getItem(info.position/* -1 subtracting header view-item */);
             menu.setHeaderTitle(item.label);
             menu.add(Menu.NONE, DELETE_MENU_ITEM, 0, "Remove");
         }

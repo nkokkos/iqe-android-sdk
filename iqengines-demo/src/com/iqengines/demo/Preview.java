@@ -4,14 +4,16 @@ package com.iqengines.demo;
 import java.io.IOException;
 import java.lang.reflect.Method;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicBoolean;
+
 
 import android.content.Context;
-import android.graphics.Bitmap;
-import android.graphics.ImageFormat;
 import android.hardware.Camera;
 import android.hardware.Camera.AutoFocusCallback;
 import android.hardware.Camera.Size;
 import android.os.Handler;
+import android.os.Looper;
+import android.os.Message;
 import android.util.AttributeSet;
 import android.util.Log;
 import android.view.Display;
@@ -21,72 +23,67 @@ import android.view.SurfaceView;
 import android.view.WindowManager;
 import android.widget.Toast;
 
-public class Preview extends SurfaceView implements SurfaceHolder.Callback, Runnable {
-
-    private static final String TAG = Preview.class.getSimpleName();
+public class Preview extends SurfaceView implements SurfaceHolder.Callback {
+   
+	private boolean DEBUG =true;
+    
+	private static final String TAG = Preview.class.getSimpleName();
     
     private static long AUTO_FOCUS_INTERVAL = 1500;
-
+    
+    public static final int CMD_SCAN = 1; 
+    
+    public static final int CMD_IMAGE_COPIED = 2;
+    
     private SurfaceHolder mHolder;
     
     private Handler mHandler;
     
-    private Boolean mAutoFocus;
-
     Camera mCamera;
 
     Size mPreviewSize;
-
-    private int mPreviewFormat;
-
-    private boolean mThreadRun;
-
+    
+    ScanningHandler mPreviewHandler;
+    
+    Thread mPreviewThread;
+    
+    AtomicBoolean mPreviewThreadRun = new AtomicBoolean(false);
+    
+    private int angle;
+    
+    private Thread mAutofocusThread;
+    
+    private Boolean mAutoFocus;
+    
     private byte[] mLastFrameCopy;
-
-    private byte[] mLastFrameCopyOut;
 
     private FrameReceiver mFrameReceiver;
 
     private Size mFramePreviewSize;
+    
+
 
     public interface FrameReceiver {
         public void onFrameReceived(byte[] frameBuffer, Size framePreviewSize);
     }
 
     public Preview(Context context) {
-        this(context, null);
+        this(context, null);		
     }
 
     public Preview(Context context, AttributeSet attrs) {
         super(context, attrs);
-
         mHandler = new Handler();
-        
         mHolder = getHolder();
         mHolder.addCallback(this);
+        // this is needed for old android version
+        mHolder.setType(SurfaceHolder.SURFACE_TYPE_PUSH_BUFFERS);
     }
-
-    // @Override
-    // protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
-    // // We purposely disregard child measurements because act as a
-    // // wrapper to a SurfaceView that centers the camera preview instead
-    // // of stretching it.
-    // final int width = resolveSize(getSuggestedMinimumWidth(),
-    // widthMeasureSpec);
-    // final int height = resolveSize(getSuggestedMinimumHeight(),
-    // heightMeasureSpec);
-    // setMeasuredDimension(width, height);
-    // 
-    // if (mSupportedPreviewSizes != null) {
-    // mPreviewSize = getOptimalPreviewSize(mSupportedPreviewSizes, width,
-    // height);
-    // }
-    // }
 
     private Size getOptimalSize(List<Size> sizes, int w, int h) {
         final double ASPECT_TOLERANCE = 0.2;
         double targetRatio = (double) w / h;
-        Log.d(TAG, "target view size: " + w + "x" + h + ", target ratio=" + targetRatio);
+        if (DEBUG) Log.d(TAG, "target view size: " + w + "x" + h + ", target ratio=" + targetRatio);
         
         if (sizes == null)
             return null;
@@ -101,7 +98,7 @@ public class Preview extends SurfaceView implements SurfaceHolder.Callback, Runn
         for (Size size : sizes) {
             double ratio = (double) size.width / size.height;
             boolean fitToView = size.width <= w && size.height <= h;
-            Log.d(TAG, "Supported preview size: " + size.width + "x" + size.height + ", ratio="
+            if (DEBUG) Log.d(TAG, "Supported preview size: " + size.width + "x" + size.height + ", ratio="
                     + ratio + ", fitToView=" + fitToView);
             if (!fitToView) {
                 // we can not use preview size bigger than surface dimensions
@@ -120,7 +117,7 @@ public class Preview extends SurfaceView implements SurfaceHolder.Callback, Runn
         }
 
         if (optimalSize == null) {
-            Log.d(TAG,
+        	if (DEBUG) Log.d(TAG,
                     "Cannot find preview that matchs the aspect ratio, ignore the aspect ratio requirement");
 
             minDiff = Double.MAX_VALUE;
@@ -142,7 +139,7 @@ public class Preview extends SurfaceView implements SurfaceHolder.Callback, Runn
         if (optimalSize == null) {
             throw new RuntimeException("Unable to determine optimal preview size");
         }
-        Log.d(TAG, "optimalSize.width=" + optimalSize.width + ", optimalSize.height="
+        if (DEBUG) Log.d(TAG, "optimalSize.width=" + optimalSize.width + ", optimalSize.height="
                 + optimalSize.height);
 
         return optimalSize;
@@ -150,16 +147,15 @@ public class Preview extends SurfaceView implements SurfaceHolder.Callback, Runn
 
     @Override
     public void surfaceChanged(SurfaceHolder holder, int format, int width, int height) {
-        if (mCamera == null) {
-            Log.e(TAG, "mCamera == null !");        
+    	
+    	if (mCamera == null) {
+    		if (DEBUG) Log.e(TAG, "mCamera == null !");        
             return;
         }
-
         Camera.Parameters params = mCamera.getParameters();
-        mPreviewFormat = params.getPreviewFormat();
         Display display = ((WindowManager) getContext().getSystemService(Context.WINDOW_SERVICE))
                 .getDefaultDisplay();
-        int angle;
+
         switch (display.getRotation()) {
             case Surface.ROTATION_0:
                 angle = 90;
@@ -183,114 +179,100 @@ public class Preview extends SurfaceView implements SurfaceHolder.Callback, Runn
             mPreviewSize = getOptimalSize(params.getSupportedPreviewSizes(), width > height ? width
                     : height, width > height ? height : width);
         }
+        	
         params.setPreviewSize(mPreviewSize.width, mPreviewSize.height);
-
         List<String> focusModes = params.getSupportedFocusModes();
         if (focusModes != null && focusModes.contains(Camera.Parameters.FOCUS_MODE_AUTO)) {
             params.setFocusMode(Camera.Parameters.FOCUS_MODE_AUTO);
         }
         
         mCamera.setParameters(params);
+        
         try {
             mCamera.setPreviewDisplay(holder);
         } catch (IOException e) {
             Log.e(TAG, "Can't set preview display", e);
         }
-
+        
         startPreview();
-
-        if (mFrameReceiver != null)
-            setFrameReceiver(mFrameReceiver);
+        
+		mFramePreviewSize = mCamera.getParameters().getPreviewSize();
+	    
+	    int bitsPerPixel = 12;
+        mLastFrameCopy = new byte[mFramePreviewSize.height*mFramePreviewSize.width * bitsPerPixel / 8];
+        PreviewCallbackScan();
+        mPreviewThreadRun.set(true);
+	    scan();
     }
-
-    
     
     class AutoFocusRunnable implements Runnable {
     	
-    	
     	@Override
     	public void run() {
-        	
         	if (mAutoFocus){
-        	
         		if (mCamera != null) {
         			try {
-               	
         				mCamera.autoFocus(new AutoFocusCallback() {
         					@Override
         					public void onAutoFocus(boolean success, Camera camera) {
         						mHandler.postDelayed(AutoFocusRunnable.this, AUTO_FOCUS_INTERVAL);
         					}
         				});
-                		} catch (Exception e) {
+        			
+                	} catch (Exception e) {
                 		Log.w(TAG, "Unable to auto-focus", e);
                     	mHandler.postDelayed(AutoFocusRunnable.this, AUTO_FOCUS_INTERVAL);
                 	}
             	}
         	}
         }
-
-
+		
     };
     
-    void startPreview() {
-    	mAutoFocus=true;
-        mCamera.startPreview();
-        Log.i(TAG,"AUTOFOCUS REUP");
-        new AutoFocusRunnable().run();
+    void startAutofocus() {
+        mAutoFocus = true;
+        mAutofocusThread = new Thread(new AutoFocusRunnable(),"Autofocus Thread");
+        mAutofocusThread.start();
     }
     
     void stopPreview() {
-    	mAutoFocus=false;
-    	mHandler.removeCallbacks(this);
-    	mCamera.cancelAutoFocus();
-    	Log.i(TAG, "start stoppreview");
-    	mCamera.stopPreview();
-    	Log.i(TAG,"stoppreview finished");
+    	mAutoFocus = false;
+    	if (mCamera!=null) mCamera.cancelAutoFocus();
+    	mAutofocusThread=null;
+    	if (mCamera!=null) mCamera.stopPreview();
     }
     
+    void startPreview(){
+    	if (mCamera!=null){
+    		mCamera.startPreview();
+    		startAutofocus();
+    	}
+    }
 
     @Override
     public void surfaceCreated(SurfaceHolder holder) {
-        try {
-        	mAutoFocus = true;
-            mCamera = Camera.open();
-        } catch (RuntimeException e) {
-            Toast.makeText(getContext(),
-                    "Unable to connect to camera. " + "Perhaps it's being used by another app.",
-                    Toast.LENGTH_LONG).show();
-        }
+    	if(mCamera==null){
+    		try {
+    			mCamera = Camera.open();
+    		} catch (RuntimeException e) {
+      	      Toast.makeText(getContext(),
+      	    		  "Unable to connect to camera. " + "Perhaps it's being used by another app.",
+     	               Toast.LENGTH_LONG).show();
+    		}
+    	}
     }
 
     @Override
     public void surfaceDestroyed(SurfaceHolder holder) {
     	
-    	mThreadRun = false;
-    	
         if (mCamera != null) {
-        	
             synchronized (this) {
-            	
-            	mCamera.setPreviewCallback(null);
-            	Log.i(TAG, "Start synchronized !!!!!!!!!!!!!!!!!!!!!");            	
-                mCamera.stopPreview();            	
-            	Log.i(TAG,"Preview Stopped");
+            	mCamera.setPreviewCallback(null);           	
+                mCamera.stopPreview();
                 mCamera.release();
-                Log.i(TAG, "Camera Release !!!!!!!!!!!!!!!!!!!!!");
                 mCamera = null;
-                Log.i(TAG, "Camera Detroyed !!!!!!!!!!!!!!!!!!!!!");
-                
             }
         }
-    }
-    
-    public boolean isSurfaceViewNull(){
-    	
-    	if(this.mHolder==null)
-    		return true;
-    	else
-    		return false;
-    	
     }
 
     private void setDisplayOrientation(Camera.Parameters params, int angle) {
@@ -303,157 +285,109 @@ public class Preview extends SurfaceView implements SurfaceHolder.Callback, Runn
                     angle
                 });
         } catch (Exception e) {
-            Log.d(TAG, "Can't call Camera.setDisplayOrientation on this device, trying another way");
-            if (angle == 90 || angle == 270)
-                params.set("orientation", "portrait");
-            else if (angle == 0 || angle == 180)
-                params.set("orientation", "landscape");
+        	if (DEBUG) Log.d(TAG, "Can't call Camera.setDisplayOrientation on this device, trying another way");
+            if (angle == 90 || angle == 270) params.set("orientation", "portrait");
+            else if (angle == 0 || angle == 180)  params.set("orientation", "landscape");
         }
         params.setRotation(angle);
     }
 
-    @Override
-    public void run() {
-        Thread.currentThread().setPriority(Thread.MIN_PRIORITY);
-     
-        mThreadRun = true;
-        while (mThreadRun) {
-            try {
-                byte[] frameCopy;
-                synchronized (this) {
-                    this.wait();
+    
+    public class PreviewThread extends Thread{
+    	
+    	public PreviewThread(String string){
+    		super(string);
+    	}
 
-                }
-                
-                if (mPreviewFormat != ImageFormat.NV21) {
-                    Log.e(TAG, "Unknown preview format: " + mPreviewFormat);
-                    continue;
-                }
-                
-                frameCopy = getLastFrameCopy();
-                
-                if (mFrameReceiver != null) {
-                	
-                	
-                    mFrameReceiver.onFrameReceived(frameCopy, mFramePreviewSize);
-                    
-                    
-                }
-                
-                Thread.sleep(50); // let other threads time to run
-            } catch (InterruptedException e) {
-                throw new RuntimeException(e);
-            }
-            
-        }
+    	@Override
+    	public void run() {
+    		Looper.prepare();
+    		Thread.currentThread().setPriority(MIN_PRIORITY);
+    		mPreviewHandler = new ScanningHandler();
+    		Looper.loop();
+    	};
     }
 
     public void setFrameReceiver(FrameReceiver receiver) {
-        if (DemoActivity.DEBUG) {
-            Log.d(TAG, "setFrameReceiver");
-        }
-
+        if (DEBUG) Log.d(TAG,"set Frame Receiver");
         mFrameReceiver = receiver;
-
-        if (mCamera != null) {
-            if (mFrameReceiver != null) {
-                (new Thread(this)).start();
-
-                // wait until thread is in main loop
-                while (!mThreadRun) {
-                    try {
-                        Thread.sleep(50);
-                    } catch (InterruptedException e) {
-                        throw new RuntimeException(e);
-                    }
-                }
-            } else {
-                mThreadRun = false;
-            }
-
-            int bitsPerPixel = 12;
-            byte[] previewBuffer = new byte[mCamera.getParameters().getPreviewSize().height
-                    * mCamera.getParameters().getPreviewSize().width * bitsPerPixel / 8];
-            mLastFrameCopy = new byte[previewBuffer.length];
-            mLastFrameCopyOut = new byte[previewBuffer.length];
-            mCamera.addCallbackBuffer(previewBuffer);
-
-            mCamera.setPreviewCallbackWithBuffer(mFrameReceiver == null ? null
-                    : new Camera.PreviewCallback() {
-
-                        @Override
-                        public void onPreviewFrame(byte[] data, Camera camera) {
-                  
-
-                            if (data == null) {
-                              
-                                Log.w(TAG, "Skiping empty frame");
-                                return;
-                            }
-
-                            copyLastFrame(data);
-
-                            synchronized (Preview.this) {
-                                mFramePreviewSize = mCamera.getParameters().getPreviewSize();
-                                Preview.this.notifyAll();
-                                
-                            }
-                            
-                            mCamera.addCallbackBuffer(data);
-                        }
-
-                    });
-        }
+        
     }
 
     private Object mLastFrameCopyLock = new Object();
-    private void copyLastFrame(byte[] frame) {
-        synchronized (mLastFrameCopyLock) {
-        	
-            System.arraycopy(frame, 0, mLastFrameCopy, 0, frame.length);
-            
-        }
+    
+    public void copyLastFrame(byte[] frame) {
+    	
+    	synchronized(mLastFrameCopyLock){
+    		if (DEBUG) Log.d(TAG,"copying frame");
+	        System.arraycopy(frame, 0, mLastFrameCopy, 0, frame.length);
+    	}
+    	mPreviewHandler.obtainMessage(CMD_IMAGE_COPIED).sendToTarget();
     }
-
+    
     public byte[] getLastFrameCopy() {
-        synchronized (mLastFrameCopyLock) {
-            System.arraycopy(mLastFrameCopy, 0, mLastFrameCopyOut, 0, mLastFrameCopy.length);
-            return mLastFrameCopyOut;
-        }
+    	
+    	synchronized(mLastFrameCopyLock){
+    		return mLastFrameCopy;
+    	}
+    } 
+    
+    public void scan(){
+    	if (DEBUG) Log.d(TAG,"<<<<<<<<<<<<<< scan called >>>>>>>>>>>>>>>>");
+    	removeAllMessages();
+    	mPreviewHandler.obtainMessage(CMD_SCAN).sendToTarget();
     }
     
+    /**
+     * @return the default angle of the camera
+     */
     
-
-    static Bitmap convertFrameToBmp(byte[] frame, Size framePreviewSize) {
-        Log.d(TAG, "frame.length=" + frame.length + ", framePreviewSize.width="
-                + framePreviewSize.width + ", framePreviewSize.height=" + framePreviewSize.height);
-
-        final int frameWidth = framePreviewSize.width;
-        final int frameHeight = framePreviewSize.height;
-        final int frameSize = frameWidth * frameHeight;
-        int[] rgba = new int[frameSize];
-        for (int i = 0; i < frameHeight; ++i)
-            for (int j = 0; j < frameWidth; ++j) {
-                int y = (0xff & ((int) frame[i * frameWidth + j]));
-                int u = (0xff & ((int) frame[frameSize + (i >> 1) * frameWidth + (j & ~1) + 0]));
-                int v = (0xff & ((int) frame[frameSize + (i >> 1) * frameWidth + (j & ~1) + 1]));
-                y = y < 16 ? 16 : y;
-
-                int r = Math.round(1.164f * (y - 16) + 1.596f * (v - 128));
-                int g = Math.round(1.164f * (y - 16) - 0.813f * (v - 128) - 0.391f * (u - 128));
-                int b = Math.round(1.164f * (y - 16) + 2.018f * (u - 128));
-
-                r = r < 0 ? 0 : (r > 255 ? 255 : r);
-                g = g < 0 ? 0 : (g > 255 ? 255 : g);
-                b = b < 0 ? 0 : (b > 255 ? 255 : b);
-
-                rgba[i * frameWidth + j] = 0xff000000 + (b << 16) + (g << 8) + r;
-            }
-
-        Bitmap bmp = Bitmap.createBitmap(frameWidth, frameHeight, Bitmap.Config.ARGB_8888);
-        bmp.setPixels(rgba, 0, frameWidth, 0, 0, frameWidth, frameHeight);
-        return bmp;
+    public int getAngle(){
+    	return angle;
     }
-   
+    
+     public void PreviewCallbackScan(){
+    	
+    	mCamera.setPreviewCallbackWithBuffer(new Camera.PreviewCallback() {
+
+                        @Override
+                        public void onPreviewFrame(byte[] data, Camera camera) {
+                        	if (data == null) {
+                                return;
+                            }
+                            copyLastFrame(data);
+                        }
+    	});	
+    }
+     
+     public class ScanningHandler extends Handler{
+    	 
+    	 @Override
+    	 public void handleMessage(Message message){
+    		 switch(message.what){
+    		 
+    		 	case(CMD_SCAN):
+    		 		if (mPreviewThreadRun.get()){
+    		 			mCamera.addCallbackBuffer(mLastFrameCopy);
+    		 			break;
+    		 		}
+    		 	break;
+    		 
+    		 	case(CMD_IMAGE_COPIED):
+    		 		if (mPreviewThreadRun.get()){
+    		 			if (DEBUG)  Log.d(TAG,"frame copied");
+    		 			mFrameReceiver.onFrameReceived(getLastFrameCopy(), mFramePreviewSize);
+    		 			break;
+    		 		}
+    		 	break;
+    		}
+    	}
+    	 
+     }
+     
+     public void removeAllMessages(){
+    	 mPreviewHandler.removeMessages(CMD_SCAN);
+     	 mPreviewHandler.removeMessages(CMD_IMAGE_COPIED);
+     }
 
 }

@@ -32,12 +32,13 @@ public class HistoryItem implements Serializable {
 
     private void writeObject(ObjectOutputStream out) throws IOException {
         out.writeUTF(label);
+        out.writeUTF(id);
         out.writeUTF(uri != null ? uri.toString() : "null");
         if (thumb != null) {
             FileOutputStream thumbOut = HistoryItemDao.ctx.openFileOutput(getThumbFilename(),
                     Context.MODE_PRIVATE);
             try {
-                thumb.compress(CompressFormat.PNG, 100, thumbOut);
+                thumb.compress(CompressFormat.PNG, 80, thumbOut);
             } finally {
                 thumbOut.close();
             }
@@ -48,6 +49,7 @@ public class HistoryItem implements Serializable {
 
     private void readObject(ObjectInputStream in) throws IOException, ClassNotFoundException {
         label = in.readUTF();
+        id = in.readUTF();
         String uriStr = in.readUTF();
         uri = uriStr.equals("null") ? null : Uri.parse(uriStr);
         thumb = BitmapFactory.decodeFile(HistoryItemDao.ctx.getFileStreamPath(getThumbFilename())
@@ -56,7 +58,7 @@ public class HistoryItem implements Serializable {
 
     private String getThumbFilename() throws UnsupportedEncodingException {
     
-        return URLEncoder.encode("thumb_" + label + ".png", "UTF-8");
+        return URLEncoder.encode("thumb_" + id + ".png", "UTF-8");
         
     }
 

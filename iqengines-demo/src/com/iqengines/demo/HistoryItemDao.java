@@ -27,7 +27,9 @@ public class HistoryItemDao {
         }
         ObjectInputStream in = null;
         try {
+        	
             in = new ObjectInputStream(ctx.openFileInput(HISTORY_FILENAME));
+            
             @SuppressWarnings("unchecked") // readObject() return Object.          
 			List<HistoryItem> res = (List<HistoryItem>) in.readObject();
             return res;

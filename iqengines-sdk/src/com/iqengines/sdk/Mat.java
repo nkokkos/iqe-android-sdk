@@ -5,14 +5,24 @@ public class Mat {
     public long nativeObj;
     
     private native long create_n(String file);
+    private native long convert_n(byte[] yuv, int  width, int height);
     private native void destroy_n(long nativeObj);
     private native int cols_n(long nativeObj);
     private native int rows_n(long nativeObj);
     private native long submat_n(long nativeObj, int x, int y, int width, int height);
     private native long resize_n(long nativeObj, int width, int height);
     
-    public Mat(String file) {
-        nativeObj = create_n(file);
+    public Mat(byte[] yuv, int  width, int height) {
+    	nativeObj = convert_n(yuv, width, height);
+//        nativeObj = create_n(file);
+    }
+    
+    public Mat(){
+    	nativeObj = 0;
+    }
+    
+    public Mat(String file){
+    	nativeObj = create_n(file);
     }
     
     public Mat(long nativeObj) {
@@ -47,5 +57,4 @@ public class Mat {
         long newObj = resize_n(nativeObj, width, height);
         return new Mat(newObj);
     }
-    
 }
