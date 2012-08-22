@@ -5,19 +5,13 @@ import android.content.Intent;
 import android.os.Bundle;
 import android.view.View;
 import android.view.Window;
-import android.widget.Button;
 import android.widget.ImageButton;
-import android.widget.ImageView;
-import android.widget.TextView;
 
 public class TutorialActivity extends Activity {
 	
-    private Button closeButton;
-    private ImageButton nextButton;
-    private ImageButton previousButton;
-    private TextView titleTutorial;
-    private ImageView scrollView;
-    private int page = 1;
+    private ImageButton goBack;
+    private ImageButton historyButton;
+    private ImageButton tutoButton;
     @Override
     public void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -29,14 +23,11 @@ public class TutorialActivity extends Activity {
 
     private void initUi() {
     	
-    	final TutorialActivity activity = this;
-        closeButton = (Button) findViewById(R.id.closeButton);
-        nextButton = (ImageButton) findViewById(R.id.nextButton);
-        previousButton = (ImageButton) findViewById(R.id.previousButton);
-        titleTutorial = (TextView) findViewById(R.id.tv_pagetitle);
-        scrollView = (ImageView) findViewById(R.id.layout_scrollView);
+        goBack = (ImageButton) findViewById(R.id.goBack);
+        historyButton = (ImageButton) findViewById(R.id.historyButton);
+        tutoButton = (ImageButton) findViewById(R.id.tutoButton);
         
-        closeButton.setOnClickListener(new View.OnClickListener() {
+        goBack.setOnClickListener(new View.OnClickListener() {
         	
             @Override
             public void onClick(View v) {
@@ -49,49 +40,28 @@ public class TutorialActivity extends Activity {
             
         });
         
-        nextButton.setOnClickListener(new View.OnClickListener() {
+        historyButton.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
-                page++;
-                updatePage(activity);
+            	Intent intent = new Intent(TutorialActivity.this,
+						HistoryActivity.class);
+				startActivity(intent);
+				finish();
             }
             
             
         });
         
-        previousButton.setOnClickListener(new View.OnClickListener() {
+        tutoButton.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
-                page--;
-                updatePage(activity);
+                
             }
             
             
         });
         
     }
-    
-    static public void updatePage(TutorialActivity activity){
-    	
-    	switch(activity.page){
-    	
-    	case 1 : activity.scrollView.setImageResource(R.drawable.tutorial1);
-    	         activity.titleTutorial.setText(R.string.title_tutorial_1);
-    	         activity.previousButton.setVisibility(4);
-    	break;
-     	case 2 : activity.scrollView.setImageResource(R.drawable.tutorial2);
-     			 activity.titleTutorial.setText(R.string.title_tutorial_2);
-     			 activity.previousButton.setVisibility(0);
-     			 activity.nextButton.setVisibility(0);
-    	break;
-    	case 3 : activity.scrollView.setImageResource(R.drawable.tutorial3);
-    		     activity.titleTutorial.setText(R.string.title_tutorial_3);
-    		     activity.nextButton.setVisibility(4);
-    	break;
-    	default : activity.finish();
-    	break;
-    	}
-    	return;
-    }
+   
 
 }

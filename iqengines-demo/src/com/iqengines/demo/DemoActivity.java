@@ -1,3 +1,4 @@
+
 package com.iqengines.demo;
 
 import java.io.File;
@@ -58,7 +59,7 @@ public class DemoActivity extends Activity {
 	 */
 	
 	// Activates the local search.
-	static final boolean SEARCH_OBJECT_LOCAL = true;
+	static final boolean SEARCH_OBJECT_LOCAL = false;
 	
 	// Activates the barcode scanning
 	static boolean SEARCH_OBJECT_BARCODE = true;

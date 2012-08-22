@@ -36,16 +36,38 @@
             android:layout_height="48dp"
             android:background="#DDDDDD" >
 
+            <ImageButton 
+                android:contentDescription="@string/desc_infoButton"
+                android:id="@+id/tutoButton"
+                android:layout_width="48dp" 
+                android:layout_height="48dp"
+                android:layout_gravity="left|center_vertical" 
+                android:background="@drawable/btn_background"
+                android:scaleType="centerInside"
+                android:clickable="true" 
+                android:src="@drawable/ic_menu_help_holo_light" />
+
             <ImageButton
-                android:contentDescription="@string/desc_goBackButton"
+                android:contentDescription="@string/desc_capture"
                 android:id="@+id/goBack"
                 android:layout_width="48dp"
                 android:layout_height="48dp"
+                android:layout_gravity="center"
+                android:background="@drawable/btn_background"
+                android:scaleType="centerInside"
+                android:clickable="true"
+                android:src="@drawable/ic_camera" />
+
+            <ImageButton
+                android:contentDescription="@string/desc_historyButton"
+                android:id="@+id/historyButton"
+                android:layout_width="48dp"
+                android:layout_height="48dp"
+                android:layout_gravity="right|center_vertical"
                 android:background="@drawable/btn_background"
                 android:clickable="true"
-                android:layout_gravity="right|center_vertical"
-                android:scaleType="centerInside"
-                android:src="@drawable/ic_camera" />
+                android:src="@drawable/ic_menu_history"                 
+                android:scaleType="centerInside"/>
 
         </FrameLayout>
     </FrameLayout>

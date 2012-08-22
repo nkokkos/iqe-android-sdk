@@ -25,6 +25,10 @@ public class HistoryActivity extends Activity {
     
     private ImageButton goBack;
     
+    private ImageButton tutoButton;
+    
+    private ImageButton historyButton;
+    
     private Uri uriShop = null;
 
     @Override
@@ -54,6 +58,24 @@ public class HistoryActivity extends Activity {
             public void onClick(View v) {
                 Intent intent = new Intent(HistoryActivity.this, DemoActivity.class);
                 startActivity(intent);
+            }
+        });
+        
+        tutoButton = (ImageButton) findViewById(R.id.tutoButton);
+        tutoButton.setOnClickListener(new View.OnClickListener() {
+            
+            @Override
+            public void onClick(View v) {
+                Intent intent = new Intent(HistoryActivity.this, TutorialActivity.class);
+                startActivity(intent);
+            }
+        });
+        
+        historyButton = (ImageButton) findViewById(R.id.historyButton);
+        historyButton.setOnClickListener(new View.OnClickListener() {
+            
+            @Override
+            public void onClick(View v) {
             }
         });
 
