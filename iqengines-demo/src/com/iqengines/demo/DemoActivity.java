@@ -59,7 +59,7 @@ public class DemoActivity extends Activity {
 	 */
 	
 	// Activates the local search.
-	static final boolean SEARCH_OBJECT_LOCAL = false;
+	static final boolean SEARCH_OBJECT_LOCAL = true;
 	
 	// Activates the barcode scanning
 	static boolean SEARCH_OBJECT_BARCODE = true;
