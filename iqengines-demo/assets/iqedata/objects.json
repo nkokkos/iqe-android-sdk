@@ -1,0 +1,20 @@
+{
+    "objects": {
+        "dollar1": {
+            "images": [
+                "1usd1", 
+                "1usd2"
+            ], 
+            "meta": "One US Dollar bill", 
+            "name": "$1"
+        }, 
+        "starbucks": {
+            "images": [
+                "Starbuck1", 
+                "Starbuck2"
+            ], 
+            "meta": "Starbuck's Coffee Logo", 
+            "name": "starbucks"
+        }
+    }
+}

@@ -1,0 +1,7 @@
+dollar1
+starbucks
+---FILES---
+dollar1/1usd1_0.iqsig
+dollar1/1usd2_0.iqsig
+starbucks/Starbuck1_0.iqsig
+starbucks/Starbuck2_0.iqsig
