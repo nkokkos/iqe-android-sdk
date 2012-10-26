@@ -1,0 +1,6 @@
+*/bin
+*/gen
+*/libs/armeabi*
+*/obj
+.metadata
+.DS_Store
