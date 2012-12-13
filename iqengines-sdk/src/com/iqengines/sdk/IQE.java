@@ -1,5 +1,4 @@
 package com.iqengines.sdk;
-
 import java.io.File;
 import java.io.IOException;
 import java.util.Collections;
@@ -889,20 +888,23 @@ public class IQE extends Handler {
 
                         final String labels;
                         final String meta;
+			final String obj_id;
                         
                         if (qidData.length() > 0) {
                             labels = qidData.optString("labels", null);
                             meta = qidData.optString("meta", null);
+			    obj_id = quiDate.optString("obj_id", null);
                         } else {
                             labels = NO_MATCH_FOUND_STR;
                             meta = null;
+			    obj_id = null;
                         }
                         
                         Message remoteResults = null;
                         Result result;
                         
                         if (onResultCallback != null) {
-                        	result = new Result(qid,null,labels, meta, remote);
+                        	result = new Result(qid,obj_id,labels, meta, remote);
                         	remoteResults = obtainMessage(CMD_SUCCESS_REMOTE,IQE.snap,0,result);
                         	iqe.sendMessageAtFrontOfQueue (remoteResults);
                         } else {	
@@ -911,7 +913,7 @@ public class IQE extends Handler {
                             
                             if (onResultCallback != null) {
 
-                            	result = new Result(qid,null,labels, meta, remote);
+                            	result = new Result(qid,obj_id,labels, meta, remote);
                             	remoteResults = obtainMessage(CMD_SUCCESS_REMOTE,IQE.snap,0, result) ;
                             	iqe.sendMessageAtFrontOfQueue (remoteResults);
                             } else {
